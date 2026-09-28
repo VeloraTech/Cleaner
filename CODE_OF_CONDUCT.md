@@ -2,7 +2,7 @@
 
 ## Our Standard
 
-Cleaner is intended to be a technical learning and collaboration space.
+HoloBuild is intended to be a technical learning and collaboration space.
 
 We expect everyone participating in the project to treat others with respect.
 

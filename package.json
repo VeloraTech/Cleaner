@@ -1,0 +1,22 @@
+{
+  "name": "cleaner",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "cleaner": "dist/src/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/tests/**/*.test.js",
+    "start": "node dist/src/cli/index.js",
+    "check": "node dist/src/cli/index.js --check"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "ignore": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

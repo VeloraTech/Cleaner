@@ -1,0 +1,26 @@
+# dependencies and build output
+node_modules/
+dist/
+coverage/
+build/
+out/
+.tmp/
+tmp/
+
+# local generated/test artifacts
+cleaner-*/
+cleaner-test-Ry1qKF/
+*.log
+*.pid
+*.tmp
+*.bak
+
+# editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# package manager caches
+.npm/
+.pnpm-store/

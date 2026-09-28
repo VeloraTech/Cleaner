@@ -1,228 +1,119 @@
 # Cleaner
 
-> A developer tool for removing unwanted `console.log` statements from a codebase without turning cleanup into a manual hunt.
+Cleaner is a safe static-analysis CLI for JavaScript and TypeScript projects. It finds unnecessary code, noisy debug statements, and suspicious dead-file patterns, then reports them in a way that keeps the developer in control.
 
-**Cleaner** is an experimental developer tool built around a simple idea:
+## What Cleaner does
 
-> Your development logs are useful while you're building. They shouldn't have to follow you into every file forever.
+Cleaner scans a project and surfaces issues such as:
 
-The project is being developed as an open-source laboratory for exploring developer tooling, source-code transformation, safe automation, and the engineering decisions behind them.
+- unused imports
+- debug statements like `console.log` and `debugger`
+- suspicious dead-code candidates
+- likely dead files
+- duplicate code candidates
 
----
+It never modifies files by default. It reports findings first and only allows safe transformations in explicit modes.
 
-## Why Cleaner?
+## Why it exists
 
-`console.log()` is useful.
+Most cleanup tools lean toward aggressive automation or blanket deletion. Cleaner intentionally favors correctness, explainability, and safety. It is meant to help developers review cleanup opportunities without silently rewriting code.
 
-During development, it helps you inspect values, understand execution flow, and debug problems. The problem starts when temporary logs remain scattered throughout a project.
-
-A typical cleanup can become:
-
-```text
-search
-→ inspect
-→ delete
-→ search again
-→ miss one
-→ repeat
-```
-
-Cleaner aims to turn that into a deliberate, inspectable operation.
-
-The goal is **not** to blindly delete code.
-
-The goal is to build a tool that can:
-
-- find targeted logging statements
-- understand where they occur
-- show what it intends to change
-- remove them safely
-- preserve unrelated code
-- make the operation reversible where possible
-- give developers confidence in what happened
-
----
-
-## Project Philosophy
-
-Cleaner is being built around the philosophy:
-
-> **Build. Break. Learn. Rebuild.**
-
-This is not just a slogan for the project.
-
-The project itself is an experiment.
-
-We want to discover:
-
-- How should a cleanup tool understand source code?
-- How much should it automate?
-- When should it refuse to modify a file?
-- How can developers preview changes before applying them?
-- What happens when syntax is unusual?
-- How should different languages be supported?
-- Where is the boundary between a useful developer tool and a dangerous code transformer?
-
-Some answers will be obvious.
-
-Others will be discovered by building, breaking things, testing assumptions, and rebuilding better solutions.
-
----
-
-## Status
-
-> **Early-stage / experimental**
-
-Cleaner is not currently presented as a production-safe universal code cleaner.
-
-Expect:
-
-- incomplete features
-- changing APIs
-- experimental architecture
-- bugs
-- breaking changes
-- unfinished documentation
-
-If you want to experiment with developer tooling, this is exactly the stage where contributions can have meaningful influence.
-
----
-
-## What Cleaner Is
-
-Cleaner is intended to become a developer-facing source cleanup tool.
-
-A future workflow may look like:
+## Installation
 
 ```bash
-cleaner scan
+npm install
+npm run build
+npx cleaner .
 ```
+
+## 30-second example
+
+```js
+import jwt from "jsonwebtoken";
+const value = 42;
+console.log("debug");
+
+debugger;
+
+export function run() {
+  return value;
+}
+```
+
+Cleaner reports:
 
 ```text
-Scanning project...
-
-src/App.jsx
-  line 14  console.log(...)
-  line 29  console.log(...)
-
-src/services/auth.js
-  line 41  console.log(...)
-
-3 removable logs found.
+SAFE unused-imports src/example.ts:1 - Unused import candidates detected during static scan.
+SAFE console src/example.ts:1 - Console debug call(s) detected: 1.
+SAFE debugger src/example.ts:1 - Debugger statement found.
 ```
 
-Then:
+## Supported languages
 
-```bash
-cleaner clean
-```
-
-could provide a preview:
-
-```text
-3 changes detected.
-
-Would you like to apply them?
-
-[preview] [apply] [cancel]
-```
-
-The exact command interface is intentionally not finalized yet.
-
-**Do not assume the examples above are the final CLI API.**
-
----
-
-## Design Goals
-
-### 1. Safety first
-
-Source code should never be modified casually.
-
-The tool should prefer:
-
-```text
-inspect
-→ understand
-→ preview
-→ confirm
-→ modify
-```
-
-over:
-
-```text
-find
-→ delete everything
-```
-
-### 2. Predictability
-
-If Cleaner says it found three targets, developers should be able to understand exactly what those three targets are.
-
-### 3. Minimal changes
-
-Cleaner should modify only what it is responsible for.
-
-Unrelated formatting and source code should remain untouched whenever technically possible.
-
-### 4. Developer control
-
-Automation should assist the developer rather than hide what is happening.
-
-### 5. Extensibility
-
-The architecture should make it possible to support additional logging patterns, languages, frameworks, and cleanup rules later.
-
----
-
-## What Cleaner Should Eventually Handle
-
-The scope may evolve, but the project can explore:
-
-- `console.log`
-- `console.info`
-- `console.warn`
-- `console.error`
-- configurable logging patterns
 - JavaScript
 - TypeScript
-- JSX
-- TSX
-- source scanning
-- dry runs
-- previews
-- safe transformations
-- backups/recovery
-- ignore patterns
-- configuration files
-- CI usage
-- editor integration
-- custom cleanup rules
+- JSX / TSX support is included in the project scanning model, with conservative scanning behavior.
 
-Not every item belongs in the first release.
+## Safety philosophy
 
-The roadmap should be driven by real implementation experience and contributor feedback.
+Cleaner follows a strict rule:
 
----
+> When uncertain, do not modify.
 
-## Example
+Only safe, clearly evidenced findings can be applied automatically. Warnings and uncertain cases are reported instead of deleted.
 
-Given:
+## CLI commands
 
-```js
-function authenticate(user) {
-  console.log("Authenticating user:", user);
+```bash
+cleaner .
+cleaner --diff
+cleaner --write
+cleaner --check
+cleaner --json
+cleaner --config cleaner.config.json
+cleaner --help
+cleaner --version
+```
 
-  const token = createToken(user);
+## Configuration
 
-  console.log("Token created");
-
-  return token;
+```json
+{
+  "rules": {
+    "unused-imports": true,
+    "unused-variables": true,
+    "unused-functions": true,
+    "unused-parameters": true,
+    "unused-exports": true,
+    "console": true,
+    "debugger": true,
+    "dead-code": true,
+    "dead-files": true,
+    "duplicate-code": true,
+    "artifacts": true
+  },
+  "ignore": ["node_modules/**", "dist/**", "generated/**"]
 }
 ```
 
-Cleaner should eventually be able to identify the logging statements without disturbing the surrounding logic:
+## Limitations
+
+This v0.1.0 implementation is intentionally conservative. It focuses on safe reporting and a small set of deterministic static checks rather than trying to be a universal code-quality platform.
+
+## Contributing
+
+Contributions are welcome. See the project docs for adding new rules, fixtures, tests, and CLI improvements.
+
+## License
+
+MIT
+
+return token;
+}
+
+````
+
+HoloBuild should eventually be able to identify the logging statements without disturbing the surrounding logic:
 
 ```js
 function authenticate(user) {
@@ -230,7 +121,7 @@ function authenticate(user) {
 
   return token;
 }
-```
+````
 
 The important engineering question is not simply:
 
@@ -250,7 +141,7 @@ For development, clone the repository and install its dependencies using the pac
 
 ```bash
 git clone <repository-url>
-cd cleaner
+cd HoloBuild
 ```
 
 Then follow the development setup documented in `CONTRIBUTING.md`.
@@ -329,7 +220,7 @@ The structure may evolve as the implementation becomes clearer.
 A possible direction:
 
 ```text
-cleaner/
+HoloBuild/
 ├── src/
 │   ├── scanner/
 │   ├── parser/
@@ -369,7 +260,7 @@ Architecture decisions should follow the actual implementation.
 - [ ] Establish testing strategy
 - [ ] Implement basic source scanning
 
-### Phase 1 — First Cleaner
+### Phase 1 — First HoloBuild
 
 - [ ] Detect `console.log`
 - [ ] Report matches
@@ -406,7 +297,7 @@ The roadmap is intentionally flexible.
 
 ## Contributing
 
-Cleaner is open to contributions of different sizes.
+HoloBuild is open to contributions of different sizes.
 
 You do **not** need to build an entire feature to contribute.
 
@@ -444,7 +335,7 @@ A good first contribution should ideally be small enough to understand without l
 
 ## Security
 
-Cleaner operates on source code.
+HoloBuild operates on source code.
 
 If you discover a security issue, please do not disclose sensitive details in a public issue.
 
@@ -491,7 +382,7 @@ Until then, do not assume that the repository's code is automatically available 
 
 ## A Note From the Maintainer
 
-Cleaner is being built as more than a utility.
+HoloBuild is being built as more than a utility.
 
 It is an engineering experiment.
 

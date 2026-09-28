@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "unused-imports": true,
+    "unused-variables": true,
+    "unused-functions": true,
+    "unused-parameters": true,
+    "unused-exports": true,
+    "console": true,
+    "debugger": true,
+    "dead-code": true,
+    "dead-files": true,
+    "duplicate-code": true,
+    "artifacts": true
+  },
+  "ignore": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    "generated/**"
+  ]
+}
