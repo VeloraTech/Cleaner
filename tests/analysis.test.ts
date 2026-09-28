@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { scanText, scanProject } from "../src/core/scanner.js";
 import { loadConfig } from "../src/config/config.js";
+import { RULES } from "../src/core/rules.js";
 
 test("detects unused imports and debug statements in code text", () => {
   const source = `
@@ -79,6 +80,17 @@ test("loads config defaults and ignore patterns", async () => {
   assert.deepEqual(config.ignore, ["dist/**", "coverage/**"]);
 });
 
+test("rule registry exposes every configured rule", () => {
+  const ruleIds = Object.keys(RULES);
+  assert.ok(ruleIds.length > 0);
+  for (const ruleId of ruleIds) {
+    const rule = RULES[ruleId as keyof typeof RULES];
+    assert.equal(rule?.id, ruleId);
+    assert.equal(typeof rule?.description, "string");
+    assert.equal(typeof rule?.fixable, "boolean");
+  }
+});
+
 test("detects unused parameters and dead-file candidates", () => {
   const source = `
     function greet(name, unusedValue) {
@@ -148,4 +160,21 @@ test("write mode applies safe transformations to the project", async () => {
 
   const updated = await readFile(filePath, "utf8");
   assert.doesNotMatch(updated, /console\.log|debugger;/i);
+});
+
+test("sample fixture produces clean JSON CLI output", () => {
+  const fixturePath = path.resolve("fixtures/sample-project");
+  const output = execFileSync(
+    "node",
+    ["dist/src/cli/index.js", fixturePath, "--json"],
+    { encoding: "utf8" },
+  );
+  const result = JSON.parse(output) as {
+    filesScanned: number;
+    findings: Array<{ rule: string }>;
+  };
+
+  assert.ok(result.filesScanned >= 2);
+  assert.ok(result.findings.some((finding) => finding.rule === "console"));
+  assert.ok(result.findings.some((finding) => finding.rule === "debugger"));
 });

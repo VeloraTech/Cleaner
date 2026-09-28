@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/tests/**/*.test.js",
     "start": "node dist/src/cli/index.js",
-    "check": "node dist/src/cli/index.js --check"
+    "check": "node dist/src/cli/index.js --check",
+    "clean:local": "node scripts/clean-local.mjs"
   },
   "dependencies": {
     "commander": "^12.1.0",

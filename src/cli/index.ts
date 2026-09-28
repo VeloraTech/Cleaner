@@ -39,9 +39,11 @@ program.action(async (targetPath: string, options: any) => {
     : await loadConfig();
 
   const outputDir = await resolveOutputDirectory(process.cwd(), "dist");
-  console.log(`Output directory: ${outputDir.dirPath}`);
 
-  const result = await scanProject(targetPath, { rules: config.rules });
+  const result = await scanProject(targetPath, {
+    rules: config.rules,
+    ignore: config.ignore,
+  });
 
   if (options.diff) {
     const diffLines = await buildDiffForProject(targetPath);
@@ -60,6 +62,7 @@ program.action(async (targetPath: string, options: any) => {
     return;
   }
 
+  console.log(`Output directory: ${outputDir.dirPath}`);
   console.log("Cleaner v0.1.0");
   console.log(`Scanning ${targetPath}...`);
   console.log(`Files scanned: ${result.filesScanned}`);
