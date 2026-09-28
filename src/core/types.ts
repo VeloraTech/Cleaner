@@ -29,6 +29,7 @@ export interface Finding {
 export interface ScanOptions {
   rules: Record<string, boolean>;
   basePath?: string;
+  ignore?: string[];
 }
 
 export interface ScanResult {

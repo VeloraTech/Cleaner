@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { scanText, scanProject } from "../src/core/scanner.js";
+import { loadConfig } from "../src/config/config.js";
 
 test("detects unused imports and debug statements in code text", () => {
   const source = `
@@ -25,7 +30,7 @@ test("detects unused imports and debug statements in code text", () => {
 
 test("scanProject reports files and safe findings without writing", async () => {
   const dir = await import("node:fs/promises").then((fs) =>
-    fs.mkdtemp("cleaner-test-"),
+    fs.mkdtemp(path.join(tmpdir(), "cleaner-output-")),
   );
 
   await import("node:fs/promises").then(async (fs) => {
@@ -41,4 +46,106 @@ test("scanProject reports files and safe findings without writing", async () => 
   });
   assert.ok(result.findings.length >= 2);
   assert.ok(result.filesScanned >= 1);
+});
+
+test("detects unused variables and dead-code candidates", () => {
+  const source = `
+    const unusedValue = 123;
+    function sample() {
+      const value = 1;
+      return value;
+      const deadCode = 2;
+    }
+  `;
+
+  const result = scanText(source, "example.ts", {
+    rules: { "unused-variables": true, "dead-code": true },
+  });
+
+  assert.ok(
+    result.findings.some((finding) => finding.rule === "unused-variables"),
+  );
+  assert.ok(result.findings.some((finding) => finding.rule === "dead-code"));
+});
+
+test("loads config defaults and ignore patterns", async () => {
+  const config = await loadConfig({
+    rules: { console: true, debugger: true },
+    ignore: ["dist/**", "coverage/**"],
+  });
+
+  assert.equal(config.rules.console, true);
+  assert.equal(config.rules.debugger, true);
+  assert.deepEqual(config.ignore, ["dist/**", "coverage/**"]);
+});
+
+test("detects unused parameters and dead-file candidates", () => {
+  const source = `
+    function greet(name, unusedValue) {
+      return \`Hello \${name}\`;
+    }
+    export const legacy = 1;
+  `;
+
+  const result = scanText(source, "src/legacy.ts", {
+    rules: { "unused-parameters": true, "dead-files": true },
+  });
+
+  assert.ok(
+    result.findings.some((finding) => finding.rule === "unused-parameters"),
+  );
+  assert.ok(result.findings.some((finding) => finding.rule === "dead-files"));
+});
+
+test("scanProject skips ignored files", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cleaner-ignore-"));
+  await mkdir(path.join(dir, "src"), { recursive: true });
+  await mkdir(path.join(dir, "dist"), { recursive: true });
+  await writeFile(path.join(dir, "src", "visible.ts"), "console.log('x');\n");
+  await writeFile(path.join(dir, "dist", "ignored.ts"), "console.log('y');\n");
+
+  const result = await scanProject(dir, {
+    rules: { console: true },
+    ignore: ["dist/**"],
+  });
+
+  assert.ok(
+    result.findings.some((finding) => finding.file.includes("visible.ts")),
+  );
+  assert.ok(!result.findings.some((finding) => finding.file.includes("dist")));
+});
+
+test("diff mode reports proposed changes", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-output-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "src", "demo.ts"),
+    `import jwt from 'jsonwebtoken';\nconsole.log('hi');\ndebugger;\n`,
+  );
+
+  const output = execFileSync(
+    "node",
+    ["dist/src/cli/index.js", projectDir, "--diff"],
+    { encoding: "utf8" },
+  );
+
+  assert.match(output, /--- .*demo\.ts/i);
+  assert.match(output, /console|debugger|unused-imports/i);
+});
+
+test("write mode applies safe transformations to the project", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-output-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  const filePath = path.join(projectDir, "src", "demo.ts");
+  await writeFile(
+    filePath,
+    `import jwt from 'jsonwebtoken';\nconsole.log('hi');\ndebugger;\nexport const keep = 1;\n`,
+  );
+
+  execFileSync("node", ["dist/src/cli/index.js", projectDir, "--write"], {
+    encoding: "utf8",
+  });
+
+  const updated = await readFile(filePath, "utf8");
+  assert.doesNotMatch(updated, /console\.log|debugger;/i);
 });

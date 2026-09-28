@@ -1,0 +1,12 @@
+{
+  "rules": {
+    "unused-imports": true,
+    "unused-variables": true,
+    "unused-parameters": true,
+    "console": true,
+    "debugger": true,
+    "dead-code": true,
+    "dead-files": true
+  },
+  "ignore": ["node_modules/**", "dist/**", "coverage/**"]
+}

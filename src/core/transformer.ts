@@ -1,14 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { scanText } from "./scanner.js";
+import { scanProject } from "./scanner.js";
 import type { Finding } from "./types.js";
 
 export async function buildDiffForProject(rootDir: string): Promise<string[]> {
+  const { findings } = await scanProject(rootDir);
   const lines: string[] = [];
-  const { findings } = await import("./scanner.js").then((m) =>
-    m.scanProject(rootDir),
-  );
 
   for (const finding of findings.filter((item) => item.fix)) {
     lines.push(`--- ${finding.file} (${finding.severity}) ---`);
@@ -21,9 +19,7 @@ export async function buildDiffForProject(rootDir: string): Promise<string[]> {
 }
 
 export async function applySafeTransforms(rootDir: string): Promise<number> {
-  const { findings } = await import("./scanner.js").then((m) =>
-    m.scanProject(rootDir),
-  );
+  const { findings } = await scanProject(rootDir);
   const byFile = new Map<string, string>();
 
   for (const finding of findings.filter(
@@ -46,13 +42,13 @@ export async function applySafeTransforms(rootDir: string): Promise<number> {
     }
 
     if (finding.rule === "unused-imports") {
-      updated = updated.replace(
-        new RegExp(
-          `^.*${finding.fix?.text?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*$`,
-          "m",
-        ),
-        "",
-      );
+      const importLine = finding.fix?.text ?? "";
+      if (importLine) {
+        updated = updated.replace(
+          new RegExp(`^\\s*${escapeRegex(importLine)}\\s*\\n?`, "m"),
+          "",
+        );
+      }
     }
 
     byFile.set(filePath, updated);
@@ -75,4 +71,8 @@ export function toDiffText(findings: Finding[]): string {
     .filter((finding) => finding.fix)
     .map((finding) => `- ${finding.file}: ${finding.message}`)
     .join("\n");
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

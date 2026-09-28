@@ -4,12 +4,17 @@ dist/
 coverage/
 build/
 out/
+.cache/
 .tmp/
 tmp/
 
 # local generated/test artifacts
 cleaner-*/
-cleaner-test-Ry1qKF/
+cleaner-test-*/
+cleaner-output-*/
+cleaner-ignore-*/
+fixtures/**/dist/
+fixtures/**/coverage/
 *.log
 *.pid
 *.tmp
@@ -24,3 +29,7 @@ Thumbs.db
 # package manager caches
 .npm/
 .pnpm-store/
+
+# local CLI-generated output
+*.tgz
+npm-debug.log*
