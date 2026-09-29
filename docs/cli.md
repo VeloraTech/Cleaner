@@ -55,19 +55,19 @@ preserved.
 
 Run these from the repository root:
 
-| Command | Purpose |
-| --- | --- |
-| `npm install` | Install dependencies. |
-| `npm run build` | Compile TypeScript into `dist/`. |
-| `npm test` | Build and run the complete test suite. |
-| `npm start` | Run Cleaner against the current directory. |
-| `npm run check` | Run `cleaner --check` against the current directory. |
-| `npm run clean:local` | Remove common local build and temporary artifacts. |
-| `npm run reset-project` | Show disposable artifacts and ask before removing them. |
-| `npm run reset-project -- --yes` | Remove listed disposable artifacts without prompting. |
-| `npm pack` | Build and create a local `.tgz` package. |
-| `npm run pack` | Alias for `npm pack`. |
-| `npm link` | Expose the local `cleaner` command globally for development. |
+| Command                          | Purpose                                                      |
+| -------------------------------- | ------------------------------------------------------------ |
+| `npm install`                    | Install dependencies.                                        |
+| `npm run build`                  | Compile TypeScript into `dist/`.                             |
+| `npm test`                       | Build and run the complete test suite.                       |
+| `npm start`                      | Run Cleaner against the current directory.                   |
+| `npm run check`                  | Run `cleaner --check` against the current directory.         |
+| `npm run clean:local`            | Remove common local build and temporary artifacts.           |
+| `npm run reset-project`          | Show disposable artifacts and ask before removing them.      |
+| `npm run reset-project -- --yes` | Remove listed disposable artifacts without prompting.        |
+| `npm pack`                       | Build and create a local `.tgz` package.                     |
+| `npm run pack`                   | Alias for `npm pack`.                                        |
+| `npm link`                       | Expose the local `cleaner` command globally for development. |
 
 After `npm link`, use `cleaner --help` or `cleaner .` from another directory.
 

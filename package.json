@@ -1,5 +1,5 @@
 {
-  "name": "cleaner",
+  "name": "@coachlogic/cleaner",
   "version": "0.1.0",
   "description": "A safety-first static-analysis CLI for JavaScript and TypeScript projects.",
   "license": "MIT",
