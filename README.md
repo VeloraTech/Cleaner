@@ -140,6 +140,9 @@ Selecting the source directory as the output is blocked unless you confirm with
 `y`, or explicitly use `--force`. Non-interactive source modification fails
 instead of hanging or proceeding implicitly.
 
+For the complete command reference, development scripts, packaging workflow,
+and exit behavior, see [docs/cli.md](docs/cli.md).
+
 ## Configuration
 
 ```json

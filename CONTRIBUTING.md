@@ -97,9 +97,18 @@ cd cleaner
 
 Install dependencies using the project's configured package manager.
 
-Run the development/test commands defined by the current project setup.
+Run the development commands from the repository root:
 
-> The exact commands will be documented here once the implementation stack is finalized.
+```bash
+npm install
+npm test
+npm run build
+```
+
+Use `npm run reset-project` to remove disposable local artifacts. It asks for
+confirmation; use `npm run reset-project -- --yes` only for deliberate automated
+cleanup. See [`docs/cli.md`](docs/cli.md) for the full command and packaging
+reference.
 
 ---
 
