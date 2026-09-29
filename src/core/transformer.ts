@@ -1,11 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { scanProject } from "./scanner.js";
-import type { Finding } from "./types.js";
+import { collectProjectFiles, scanProject } from "./scanner.js";
+import type { Finding, ScanOptions } from "./types.js";
 
-export async function buildDiffForProject(rootDir: string): Promise<string[]> {
-  const { findings } = await scanProject(rootDir);
+export async function buildDiffForProject(
+  rootDir: string,
+  options: Partial<ScanOptions> = {},
+): Promise<string[]> {
+  const { findings } = await scanProject(rootDir, options);
   const lines: string[] = [];
 
   for (const finding of findings.filter((item) => item.fix)) {
@@ -18,8 +21,11 @@ export async function buildDiffForProject(rootDir: string): Promise<string[]> {
   return lines;
 }
 
-export async function applySafeTransforms(rootDir: string): Promise<number> {
-  const { findings } = await scanProject(rootDir);
+export async function applySafeTransforms(
+  rootDir: string,
+  options: Partial<ScanOptions> = {},
+): Promise<number> {
+  const { findings } = await scanProject(rootDir, options);
   const byFile = new Map<string, string>();
 
   for (const finding of findings.filter(
@@ -64,6 +70,25 @@ export async function applySafeTransforms(rootDir: string): Promise<number> {
   }
 
   return applied;
+}
+
+export async function writeCleanedCopy(
+  inputDir: string,
+  outputDir: string,
+  options: Partial<ScanOptions> = {},
+): Promise<number> {
+  const files = await collectProjectFiles(inputDir, options.ignore);
+  await fs.mkdir(outputDir, { recursive: true });
+
+  for (const sourcePath of files) {
+    const relativePath = path.relative(inputDir, sourcePath);
+    const destinationPath = path.join(outputDir, relativePath);
+    if (path.resolve(sourcePath) === path.resolve(destinationPath)) continue;
+    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+    await fs.copyFile(sourcePath, destinationPath);
+  }
+
+  return applySafeTransforms(outputDir, options);
 }
 
 export function toDiffText(findings: Finding[]): string {

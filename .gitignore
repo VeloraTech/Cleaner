@@ -7,6 +7,8 @@ out/
 .cache/
 .tmp/
 tmp/
+test-output/
+generated/
 
 # local generated/test artifacts
 cleaner-*/

@@ -169,7 +169,7 @@ export async function scanProject(
     "dist/**",
     "coverage/**",
   ];
-  const files = await collectFiles(rootDir, ignore);
+  const files = await collectProjectFiles(rootDir, ignore);
   const findings: Finding[] = [];
 
   for (const file of files) {
@@ -187,7 +187,7 @@ export async function scanProject(
   };
 }
 
-async function collectFiles(
+export async function collectProjectFiles(
   rootDir: string,
   ignore: string[] = ["node_modules/**", "dist/**", "coverage/**"],
 ): Promise<string[]> {

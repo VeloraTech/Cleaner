@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { scanText, scanProject } from "../src/core/scanner.js";
 import { loadConfig } from "../src/config/config.js";
 import { RULES } from "../src/core/rules.js";
+import { resolveOutputPlan } from "../src/core/output.js";
 
 test("detects unused imports and debug statements in code text", () => {
   const source = `
@@ -145,21 +146,159 @@ test("diff mode reports proposed changes", async () => {
   assert.match(output, /console|debugger|unused-imports/i);
 });
 
-test("write mode applies safe transformations to the project", async () => {
+test("default mode writes a cleaned copy and preserves the source", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-output-"));
   await mkdir(path.join(projectDir, "src"), { recursive: true });
   const filePath = path.join(projectDir, "src", "demo.ts");
-  await writeFile(
-    filePath,
-    `import jwt from 'jsonwebtoken';\nconsole.log('hi');\ndebugger;\nexport const keep = 1;\n`,
-  );
+  const source = `import jwt from 'jsonwebtoken';\nconsole.log('hi');\ndebugger;\nexport const keep = 1;\n`;
+  await writeFile(filePath, source);
 
-  execFileSync("node", ["dist/src/cli/index.js", projectDir, "--write"], {
+  execFileSync("node", [path.resolve("dist/src/cli/index.js"), "src"], {
+    cwd: projectDir,
     encoding: "utf8",
   });
 
-  const updated = await readFile(filePath, "utf8");
+  assert.equal(await readFile(filePath, "utf8"), source);
+  const updated = await readFile(
+    path.join(projectDir, "dist", "src", "demo.ts"),
+    "utf8",
+  );
   assert.doesNotMatch(updated, /console\.log|debugger;/i);
+});
+
+test("custom output preserves the input directory structure", async () => {
+  const projectDir = await mkdtemp(
+    path.join(tmpdir(), "cleaner-custom-output-"),
+  );
+  await mkdir(path.join(projectDir, "src", "nested"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "src", "nested", "demo.ts"),
+    "console.log('x');\n",
+  );
+
+  execFileSync(
+    "node",
+    [path.resolve("dist/src/cli/index.js"), "src", "--output", "cleaned"],
+    {
+      cwd: projectDir,
+      encoding: "utf8",
+    },
+  );
+
+  await access(path.join(projectDir, "cleaned", "src", "nested", "demo.ts"));
+});
+
+test("project-root input writes directly under dist", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-root-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "src", "demo.ts"),
+    "console.log('x');\n",
+  );
+
+  execFileSync("node", [path.resolve("dist/src/cli/index.js"), "."], {
+    cwd: projectDir,
+    encoding: "utf8",
+  });
+  execFileSync("node", [path.resolve("dist/src/cli/index.js"), "."], {
+    cwd: projectDir,
+    encoding: "utf8",
+  });
+
+  await access(path.join(projectDir, "dist", "src", "demo.ts"));
+  await assert.rejects(
+    access(path.join(projectDir, "dist", path.basename(projectDir))),
+  );
+  await assert.rejects(access(path.join(projectDir, "dist", "dist")));
+});
+
+test("output inside the source tree is rejected", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-overlap-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "src", "demo.ts"),
+    "console.log('x');\n",
+  );
+
+  await assert.rejects(
+    resolveOutputPlan("src", "src/cleaned", projectDir),
+    /overlaps the input directory/i,
+  );
+});
+
+test("write mode requires an explicit source override", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-write-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  const filePath = path.join(projectDir, "src", "demo.ts");
+  await writeFile(filePath, "console.log('hi');\ndebugger;\n");
+
+  assert.throws(() =>
+    execFileSync(
+      "node",
+      [path.resolve("dist/src/cli/index.js"), "src", "--write"],
+      {
+        cwd: projectDir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ),
+  );
+  assert.match(await readFile(filePath, "utf8"), /console\.log|debugger;/i);
+
+  execFileSync(
+    "node",
+    [path.resolve("dist/src/cli/index.js"), "src", "--write", "--force"],
+    {
+      cwd: projectDir,
+      encoding: "utf8",
+    },
+  );
+  assert.doesNotMatch(
+    await readFile(filePath, "utf8"),
+    /console\.log|debugger;/i,
+  );
+});
+
+test("diff mode does not create output", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-diff-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "src", "demo.ts"),
+    "console.log('x');\n",
+  );
+
+  execFileSync(
+    "node",
+    [path.resolve("dist/src/cli/index.js"), "src", "--diff"],
+    {
+      cwd: projectDir,
+      encoding: "utf8",
+    },
+  );
+
+  await assert.rejects(access(path.join(projectDir, "dist")));
+});
+
+test("check mode is read-only", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-check-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "src", "demo.ts"),
+    "console.log('x');\n",
+  );
+
+  assert.throws(() =>
+    execFileSync(
+      "node",
+      [path.resolve("dist/src/cli/index.js"), "src", "--check"],
+      {
+        cwd: projectDir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ),
+  );
+  await assert.rejects(access(path.join(projectDir, "dist")));
 });
 
 test("sample fixture produces clean JSON CLI output", () => {

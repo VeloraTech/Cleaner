@@ -1,16 +1,27 @@
 {
   "name": "cleaner",
   "version": "0.1.0",
+  "description": "A safety-first static-analysis CLI for JavaScript and TypeScript projects.",
+  "license": "MIT",
   "type": "module",
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "bin": {
     "cleaner": "dist/src/cli/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/tests/**/*.test.js",
+    "prepack": "npm run build",
+    "pack": "npm pack",
     "start": "node dist/src/cli/index.js",
     "check": "node dist/src/cli/index.js --check",
-    "clean:local": "node scripts/clean-local.mjs"
+    "clean:local": "node scripts/clean-local.mjs",
+    "reset-project": "node scripts/reset-project.js"
   },
   "dependencies": {
     "commander": "^12.1.0",
