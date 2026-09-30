@@ -62,10 +62,29 @@ function verifyPackManifest(manifestPath, tag) {
   const manifest = JSON.parse(
     readFileSync(path.resolve(projectRoot, manifestPath), "utf8"),
   );
-  if (!Array.isArray(manifest) || manifest.length !== 1) {
-    fail("npm pack manifest must contain exactly one package.");
+  const packages = Array.isArray(manifest)
+    ? manifest
+    : manifest &&
+        typeof manifest === "object" &&
+        typeof manifest.name === "string"
+      ? [manifest]
+      : manifest && typeof manifest === "object"
+        ? Object.values(manifest)
+        : [];
+  if (
+    packages.length !== 1 ||
+    packages[0] === null ||
+    typeof packages[0] !== "object" ||
+    Array.isArray(packages[0])
+  ) {
+    const shape = Array.isArray(manifest)
+      ? `array with ${manifest.length} entries`
+      : manifest && typeof manifest === "object"
+        ? `object with ${Object.keys(manifest).length} entries`
+        : typeof manifest;
+    fail(`expected one npm pack package entry; received ${shape}.`);
   }
-  const packed = manifest[0];
+  const packed = packages[0];
   if (
     packed.name !== packageJson.name ||
     packed.version !== packageJson.version
