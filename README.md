@@ -56,23 +56,36 @@ Create a build artifact locally:
 npm pack
 ```
 
-This creates a versioned tarball, currently `coachlogic-cleaner-0.1.1.tgz`.
-Share that file, and another user can install it with:
+This creates a versioned archive, for example `coachlogic-cleaner-0.1.4.tgz`.
+Share the generated file; another user can install it with:
 
 ```bash
-npm install ./coachlogic-cleaner-0.1.1.tgz
+npm install ./coachlogic-cleaner-0.1.4.tgz
 npx cleaner .
 ```
 
-To publish the package to npm instead:
+Public publishing is handled by the tag-driven GitHub Actions release workflow,
+not from developer workstations. After publishing, users can install it with
+`npm install @coachlogic/cleaner` and run it with `npx cleaner .`.
+
+## Creating a release
+
+Update `package.json` and `package-lock.json` to the intended release version,
+commit that change, then create and push the matching tag:
 
 ```bash
-npm login
-npm publish --access public
+npm version patch --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: prepare release"
+git tag vX.Y.Z
+git push origin HEAD
+git push origin vX.Y.Z
 ```
 
-After publishing, users can install it with `npm install @coachlogic/cleaner`
-and run it with `npx cleaner .`.
+The tag must exactly match the package version. GitHub Actions validates the
+tag, runs tests and build/package checks, creates a GitHub Release with the
+`.tgz` and its SHA256 checksum, then publishes `@coachlogic/cleaner` to npm via
+OIDC. See [docs/releasing.md](docs/releasing.md) for one-time setup and details.
 
 For local development cleanup, use the confirmation-protected reset command:
 
@@ -186,7 +199,10 @@ and exit behavior, see [docs/cli.md](docs/cli.md).
 
 ## Limitations
 
-This is intentionally a v0.1.0 implementation. It does not attempt to be a universal code-quality suite or a full semantic optimizer. It is a conservative cleanup tool focused on safe, explainable findings.
+This is an early `0.1.x` implementation. It does not attempt to be a universal
+code-quality suite or a full semantic optimizer. Some warning-level rules remain
+heuristic and non-fixable; automatic transformations are limited to findings
+Cleaner can prove safe.
 
 ## Repository layout
 

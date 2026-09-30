@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js and npm registry
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          scope: "@coachlogic"
+          package-manager-cache: false
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install --global npm@latest
+          node -e 'const [major, minor, patch] = require("child_process").execSync("npm --version", { encoding: "utf8" }).trim().split(".").map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) { console.error("npm 11.5.1 or newer is required for trusted publishing"); process.exit(1); }'
+
+      - name: Validate tag and package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release-check.mjs --validate-tag "$RELEASE_TAG"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests, build, and verify npm package
+        run: npm run release:check -- --tag "${{ github.ref_name }}"
+
+      - name: Pack npm artifact
+        run: npm pack --json --ignore-scripts > npm-pack-manifest.json
+
+      - name: Verify packed artifact
+        id: package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release-check.mjs --manifest npm-pack-manifest.json --tag "$RELEASE_TAG"
+
+      - name: Create SHA256 checksum
+        env:
+          PACKAGE_FILE: ${{ steps.package.outputs.package_file }}
+        run: sha256sum "$PACKAGE_FILE" > SHA256SUMS
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ github.token }}
+          tag_name: ${{ github.ref_name }}
+          name: Cleaner ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          files: |
+            ${{ steps.package.outputs.package_file }}
+            SHA256SUMS
+
+      - name: Publish package to npm using trusted publishing
+        env:
+          PACKAGE_FILE: ${{ steps.package.outputs.package_file }}
+        run: npm publish "$PACKAGE_FILE" --access public

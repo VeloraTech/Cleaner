@@ -71,6 +71,75 @@ test("detects unused variables and dead-code candidates", () => {
   assert.ok(result.findings.some((finding) => finding.rule === "dead-code"));
 });
 
+test("unused-variable analysis ignores strings and respects lexical bindings", () => {
+  const source = `
+    const token = 42;
+    const text = "token";
+    const shadowed = 1;
+    function read(shadowed) {
+      return shadowed;
+    }
+    const used = 3;
+    function getUsed() {
+      return used;
+    }
+  `;
+  const result = scanText(source, "unused-variables.js", {
+    rules: { "unused-variables": true },
+  });
+  const unusedNames = result.findings
+    .filter((finding) => finding.rule === "unused-variables")
+    .map((finding) => finding.message.match(/'([^']+)'/)?.[1]);
+
+  assert.ok(unusedNames.includes("token"));
+  assert.ok(unusedNames.includes("text"));
+  assert.ok(unusedNames.includes("shadowed"));
+  assert.ok(!unusedNames.includes("used"));
+  assert.equal(
+    result.findings.every((finding) => !finding.fixable),
+    true,
+  );
+});
+
+test("unused-variable analysis handles destructuring by binding", () => {
+  const source = `const { unused, used } = values;\nvoid used;`;
+  const result = scanText(source, "destructured-variables.ts", {
+    rules: { "unused-variables": true },
+  });
+  const unusedNames = result.findings
+    .filter((finding) => finding.rule === "unused-variables")
+    .map((finding) => finding.message.match(/'([^']+)'/)?.[1]);
+
+  assert.deepEqual(unusedNames, ["unused"]);
+});
+
+test("unused-parameter analysis handles callbacks and shadowing", () => {
+  const source = `
+    function greet(name) { return "name"; }
+    function outer(value) {
+      function nested(value) { return value; }
+      return 2;
+    }
+    const used = (item) => item + 1;
+    [1, 2].map((entry) => entry + 1);
+  `;
+  const result = scanText(source, "unused-parameters.ts", {
+    rules: { "unused-parameters": true },
+  });
+  const unusedNames = result.findings
+    .filter((finding) => finding.rule === "unused-parameters")
+    .map((finding) => finding.message.match(/'([^']+)'/)?.[1]);
+
+  assert.ok(unusedNames.includes("name"));
+  assert.ok(unusedNames.includes("value"));
+  assert.ok(!unusedNames.includes("item"));
+  assert.ok(!unusedNames.includes("entry"));
+  assert.equal(
+    result.findings.every((finding) => !finding.fixable),
+    true,
+  );
+});
+
 test("loads config defaults and ignore patterns", async () => {
   const config = await loadConfig({
     rules: { console: true, debugger: true },

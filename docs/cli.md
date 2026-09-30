@@ -55,37 +55,36 @@ preserved.
 
 Run these from the repository root:
 
-| Command                          | Purpose                                                      |
-| -------------------------------- | ------------------------------------------------------------ |
-| `npm install`                    | Install dependencies.                                        |
-| `npm run build`                  | Compile TypeScript into `dist/`.                             |
-| `npm test`                       | Build and run the complete test suite.                       |
-| `npm start`                      | Run Cleaner against the current directory.                   |
-| `npm run check`                  | Run `cleaner --check` against the current directory.         |
-| `npm run clean:local`            | Remove common local build and temporary artifacts.           |
-| `npm run reset-project`          | Show disposable artifacts and ask before removing them.      |
-| `npm run reset-project -- --yes` | Remove listed disposable artifacts without prompting.        |
-| `npm pack`                       | Build and create a local `.tgz` package.                     |
-| `npm run pack`                   | Alias for `npm pack`.                                        |
-| `npm link`                       | Expose the local `cleaner` command globally for development. |
+| Command                          | Purpose                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| `npm install`                    | Install dependencies.                                                      |
+| `npm run build`                  | Compile TypeScript into `dist/`.                                           |
+| `npm test`                       | Build and run the complete test suite.                                     |
+| `npm run release:check`          | Run local tests, build, and package-content validation without publishing. |
+| `npm start`                      | Run Cleaner against the current directory.                                 |
+| `npm run check`                  | Run `cleaner --check` against the current directory.                       |
+| `npm run clean:local`            | Remove common local build and temporary artifacts.                         |
+| `npm run reset-project`          | Show disposable artifacts and ask before removing them.                    |
+| `npm run reset-project -- --yes` | Remove listed disposable artifacts without prompting.                      |
+| `npm pack`                       | Build and create a local `.tgz` package.                                   |
+| `npm run pack`                   | Alias for `npm pack`.                                                      |
+| `npm link`                       | Expose the local `cleaner` command globally for development.               |
 
 After `npm link`, use `cleaner --help` or `cleaner .` from another directory.
 
 ## Packaging
 
-`npm pack` creates a file such as `cleaner-0.1.0.tgz`. Install that local
-package elsewhere with:
+`npm pack` creates a file named from the scoped package, for example
+`coachlogic-cleaner-0.1.4.tgz`. Install that local package elsewhere with:
 
 ```bash
-npm install ./cleaner-0.1.0.tgz
+npm install ./coachlogic-cleaner-0.1.4.tgz
 npx cleaner .
 ```
 
-To publish the package to npm, authenticate first and then run:
+Public releases are published automatically by GitHub Actions when a matching
+version tag is pushed. See [docs/releasing.md](releasing.md) for tag creation and
+the required npm trusted-publisher setup.
 
-```bash
-npm login
-npm publish --access public
-```
-
-After publication, users can run `npm install cleaner` and `npx cleaner .`.
+After publication, users can run `npm install @coachlogic/cleaner` and
+`npx cleaner .`.

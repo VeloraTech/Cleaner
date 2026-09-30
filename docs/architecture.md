@@ -11,9 +11,11 @@ Cleaner is intentionally small and conservative. The core flow is:
 
 The implementation keeps the pipeline simple enough to understand and extend without introducing heavy abstraction.
 
-Unused-import analysis uses the TypeScript compiler AST and checker to resolve
-local binding symbols. A declaration is marked safely removable only when all
-its local bindings resolve and have no references; type references, exports,
-aliases, nested scopes, and shorthand properties are included. Parse or binding
-uncertainty produces a warning without a fix. Import transformations use the
-AST declaration's source range rather than matching identifier text.
+Unused-import, unused-variable, and unused-parameter analysis uses the
+TypeScript compiler AST and checker to resolve local binding symbols. An import
+is marked safely removable only when all its local bindings resolve and have no
+references; type references, exports, aliases, nested scopes, and shorthand
+properties are included. Parse or binding uncertainty never produces an import
+removal. Import transformations use the AST declaration's source range rather
+than matching identifier text. Variable and parameter findings remain
+warning-only and non-fixable.

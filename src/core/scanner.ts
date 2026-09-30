@@ -25,53 +25,22 @@ export function scanText(
   };
 
   const normalizedSource = source.toString();
+  const semanticContext =
+    rules["unused-imports"] ||
+    rules["unused-variables"] ||
+    rules["unused-parameters"]
+      ? createSemanticContext(normalizedSource, filePath)
+      : undefined;
   if (rules["unused-imports"]) {
-    findings.push(...findUnusedImports(normalizedSource, filePath));
+    findings.push(...findUnusedImports(semanticContext!, filePath));
   }
 
   if (rules["unused-variables"]) {
-    const unusedVariableMatches =
-      normalizedSource.match(/const\s+(\w+)\s*=\s*[^;]+;/g) ?? [];
-    for (const match of unusedVariableMatches) {
-      const variableName = match.match(/const\s+(\w+)/)?.[1];
-      if (!variableName) continue;
-
-      const usageCount = normalizedSource.split(variableName).length - 1;
-      if (usageCount <= 1) {
-        findings.push({
-          rule: "unused-variables",
-          file: filePath,
-          line: 1,
-          severity: "WARNING",
-          message: `Variable '${variableName}' appears unused.`,
-          fixable: false,
-        });
-      }
-    }
+    findings.push(...findUnusedVariables(semanticContext!, filePath));
   }
 
   if (rules["unused-parameters"]) {
-    const functionMatches =
-      normalizedSource.match(/function\s+\w+\s*\(([^)]*)\)/g) ?? [];
-    for (const match of functionMatches) {
-      const params = match.match(/\(([^)]*)\)/)?.[1]?.split(",") ?? [];
-      for (const param of params) {
-        const cleanParam = param.trim();
-        if (!cleanParam || cleanParam.startsWith("...")) continue;
-        const variableName = cleanParam.replace(/:\s*.*$/, "").trim();
-        const usageCount = normalizedSource.split(variableName).length - 1;
-        if (usageCount <= 1) {
-          findings.push({
-            rule: "unused-parameters",
-            file: filePath,
-            line: 1,
-            severity: "WARNING",
-            message: `Parameter '${variableName}' appears unused.`,
-            fixable: false,
-          });
-        }
-      }
-    }
+    findings.push(...findUnusedParameters(semanticContext!, filePath));
   }
 
   if (rules["dead-code"]) {
@@ -139,7 +108,17 @@ export function scanText(
   return { filesScanned: 1, findings };
 }
 
-function findUnusedImports(source: string, filePath: string): Finding[] {
+interface SemanticContext {
+  sourceFile: ts.SourceFile;
+  checker: ts.TypeChecker;
+  hasSyntaxErrors: boolean;
+  referencedSymbols: Set<ts.Symbol>;
+}
+
+function createSemanticContext(
+  source: string,
+  filePath: string,
+): SemanticContext {
   const absolutePath = path.resolve(filePath || "cleaner-input.ts");
   const scriptKind = getScriptKind(absolutePath);
   const sourceFile = ts.createSourceFile(
@@ -185,10 +164,19 @@ function findUnusedImports(source: string, filePath: string): Finding[] {
       : originalReadFile(name);
 
   const program = ts.createProgram([absolutePath], compilerOptions, host);
-  const hasSyntaxErrors =
-    program.getSyntacticDiagnostics(sourceFile).length > 0;
-
   const checker = program.getTypeChecker();
+  return {
+    sourceFile,
+    checker,
+    hasSyntaxErrors: program.getSyntacticDiagnostics(sourceFile).length > 0,
+    referencedSymbols: collectReferencedSymbols(sourceFile, checker),
+  };
+}
+
+function collectReferencedSymbols(
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+): Set<ts.Symbol> {
   const referencedSymbols = new Set<ts.Symbol>();
   const visitReferences = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node)) return;
@@ -198,11 +186,23 @@ function findUnusedImports(source: string, filePath: string): Finding[] {
     }
     if (ts.isIdentifier(node)) {
       const symbol = checker.getSymbolAtLocation(node);
-      if (symbol) referencedSymbols.add(symbol);
+      const isDeclaration = symbol?.declarations?.some(
+        (declaration) => (declaration as ts.NamedDeclaration).name === node,
+      );
+      if (symbol && !isDeclaration) referencedSymbols.add(symbol);
     }
     ts.forEachChild(node, visitReferences);
   };
   visitReferences(sourceFile);
+  return referencedSymbols;
+}
+
+function findUnusedImports(
+  context: SemanticContext,
+  filePath: string,
+): Finding[] {
+  const { sourceFile, checker, hasSyntaxErrors } = context;
+  const { referencedSymbols } = context;
 
   const findings: Finding[] = [];
   const visitImports = (node: ts.Node): void => {
@@ -274,6 +274,105 @@ function findUnusedImports(source: string, filePath: string): Finding[] {
   };
   visitImports(sourceFile);
   return findings;
+}
+
+function findUnusedVariables(
+  context: SemanticContext,
+  filePath: string,
+): Finding[] {
+  if (context.hasSyntaxErrors) return [];
+  const { referencedSymbols } = context;
+  const findings: Finding[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node)) {
+      for (const binding of getBindingIdentifiers(node.name)) {
+        addUnusedBindingFinding(
+          context,
+          referencedSymbols,
+          binding,
+          filePath,
+          "unused-variables",
+          "Variable",
+          findings,
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(context.sourceFile);
+  return findings;
+}
+
+function findUnusedParameters(
+  context: SemanticContext,
+  filePath: string,
+): Finding[] {
+  if (context.hasSyntaxErrors) return [];
+  const { referencedSymbols } = context;
+  const findings: Finding[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isParameter(node) &&
+      ts.isFunctionLike(node.parent) &&
+      "body" in node.parent &&
+      node.parent.body !== undefined
+    ) {
+      for (const binding of getBindingIdentifiers(node.name)) {
+        if (binding.text === "this") continue;
+        addUnusedBindingFinding(
+          context,
+          referencedSymbols,
+          binding,
+          filePath,
+          "unused-parameters",
+          "Parameter",
+          findings,
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(context.sourceFile);
+  return findings;
+}
+
+function getBindingIdentifiers(name: ts.BindingName): ts.Identifier[] {
+  if (ts.isIdentifier(name)) return [name];
+  const identifiers: ts.Identifier[] = [];
+  for (const element of name.elements) {
+    if (!ts.isOmittedExpression(element)) {
+      identifiers.push(...getBindingIdentifiers(element.name));
+    }
+  }
+  return identifiers;
+}
+
+function addUnusedBindingFinding(
+  context: SemanticContext,
+  referencedSymbols: Set<ts.Symbol>,
+  binding: ts.Identifier,
+  filePath: string,
+  rule: "unused-variables" | "unused-parameters",
+  label: "Variable" | "Parameter",
+  findings: Finding[],
+): void {
+  const symbol = context.checker.getSymbolAtLocation(binding);
+  if (!symbol || referencedSymbols.has(symbol)) return;
+
+  const line =
+    context.sourceFile.getLineAndCharacterOfPosition(
+      binding.getStart(context.sourceFile),
+    ).line + 1;
+  findings.push({
+    rule,
+    file: filePath,
+    line,
+    severity: "WARNING",
+    message: `${label} '${binding.text}' appears unused.`,
+    fixable: false,
+  });
 }
 
 function getScriptKind(filePath: string): ts.ScriptKind {
