@@ -1,5 +1,10 @@
 # Cleaner
 
+[![npm version](https://img.shields.io/npm/v/%40coachlogic%2Fcleaner?label=npm)](https://www.npmjs.com/package/@coachlogic/cleaner)
+[![npm downloads](https://img.shields.io/npm/dm/%40coachlogic%2Fcleaner)](https://www.npmjs.com/package/@coachlogic/cleaner)
+[![license](https://img.shields.io/github/license/VeloraTech/Cleaner)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/VeloraTech/Cleaner)](https://github.com/VeloraTech/Cleaner)
+
 Cleaner is a local-first static-analysis CLI for JavaScript and TypeScript projects. It helps developers find unnecessary code, debug artifacts, and suspicious cleanup candidates without blindly editing source files.
 
 ## What Cleaner does
@@ -30,6 +35,13 @@ Developer tooling should help people understand what may be unnecessary, not gue
 ## Installation
 
 ```bash
+npm install @coachlogic/cleaner
+npx cleaner .
+```
+
+For repository development:
+
+```bash
 npm install
 npm run build
 npm link
@@ -44,10 +56,11 @@ Create a build artifact locally:
 npm pack
 ```
 
-This creates `cleaner-0.1.0.tgz`. Share that file, and another user can install it with:
+This creates a versioned tarball, currently `coachlogic-cleaner-0.1.1.tgz`.
+Share that file, and another user can install it with:
 
 ```bash
-npm install ./cleaner-0.1.0.tgz
+npm install ./coachlogic-cleaner-0.1.1.tgz
 npx cleaner .
 ```
 
@@ -58,7 +71,8 @@ npm login
 npm publish --access public
 ```
 
-After publishing, users can install it with `npm install cleaner` and run it with `npx cleaner .`.
+After publishing, users can install it with `npm install @coachlogic/cleaner`
+and run it with `npx cleaner .`.
 
 For local development cleanup, use the confirmation-protected reset command:
 

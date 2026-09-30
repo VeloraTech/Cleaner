@@ -1,6 +1,6 @@
 {
   "name": "@coachlogic/cleaner",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "A safety-first static-analysis CLI for JavaScript and TypeScript projects.",
   "license": "MIT",
   "type": "module",
@@ -25,10 +25,10 @@
   },
   "dependencies": {
     "commander": "^12.1.0",
-    "ignore": "^5.0.0"
+    "ignore": "^5.0.0",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "typescript": "^5.7.2"
+    "@types/node": "^22.10.2"
   }
 }

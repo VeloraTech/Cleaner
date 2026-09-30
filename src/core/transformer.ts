@@ -1,7 +1,7 @@
+import { collectProjectFiles, scanProject } from "./scanner.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { collectProjectFiles, scanProject } from "./scanner.js";
 import type { Finding, ScanOptions } from "./types.js";
 
 export async function buildDiffForProject(
@@ -27,36 +27,46 @@ export async function applySafeTransforms(
 ): Promise<number> {
   const { findings } = await scanProject(rootDir, options);
   const byFile = new Map<string, string>();
-
+  const findingsByFile = new Map<string, Finding[]>();
   for (const finding of findings.filter(
     (item) => item.fix && item.severity === "SAFE",
   )) {
     const filePath = path.join(rootDir, finding.file);
-    const current =
-      byFile.get(filePath) ?? (await fs.readFile(filePath, "utf8"));
-    let updated = current;
+    const fileFindings = findingsByFile.get(filePath) ?? [];
+    fileFindings.push(finding);
+    findingsByFile.set(filePath, fileFindings);
+  }
 
-    if (finding.rule === "debugger") {
-      updated = updated.replace(/debugger\s*;/g, "");
+  for (const [filePath, fileFindings] of findingsByFile) {
+    let updated = await fs.readFile(filePath, "utf8");
+    const importFixes = fileFindings
+      .filter(
+        (finding) =>
+          finding.rule === "unused-imports" &&
+          finding.fix?.start !== undefined &&
+          finding.fix.end !== undefined,
+      )
+      .map((finding) => ({
+        start: finding.fix!.start!,
+        end: finding.fix!.end!,
+      }))
+      .sort((left, right) => right.start - left.start);
+
+    for (const fix of importFixes) {
+      updated = `${updated.slice(0, fix.start)}${updated.slice(fix.end)}`;
     }
 
-    if (finding.rule === "console") {
-      updated = updated.replace(
-        /console\.(log|debug|info|warn|error)\s*\([^;]*\);?/g,
-        "",
-      );
-    }
-
-    if (finding.rule === "unused-imports") {
-      const importLine = finding.fix?.text ?? "";
-      if (importLine) {
+    for (const finding of fileFindings) {
+      if (finding.rule === "debugger") {
+        updated = updated.replace(/debugger\s*;/g, "");
+      }
+      if (finding.rule === "console") {
         updated = updated.replace(
-          new RegExp(`^\\s*${escapeRegex(importLine)}\\s*\\n?`, "m"),
+          /console\.(log|debug|info|warn|error)\s*\([^;]*\);?/g,
           "",
         );
       }
     }
-
     byFile.set(filePath, updated);
   }
 
@@ -96,8 +106,4 @@ export function toDiffText(findings: Finding[]): string {
     .filter((finding) => finding.fix)
     .map((finding) => `- ${finding.file}: ${finding.message}`)
     .join("\n");
-}
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

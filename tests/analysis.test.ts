@@ -9,6 +9,7 @@ import { scanText, scanProject } from "../src/core/scanner.js";
 import { loadConfig } from "../src/config/config.js";
 import { RULES } from "../src/core/rules.js";
 import { resolveOutputPlan } from "../src/core/output.js";
+import { applySafeTransforms } from "../src/core/transformer.js";
 
 test("detects unused imports and debug statements in code text", () => {
   const source = `
@@ -90,6 +91,128 @@ test("rule registry exposes every configured rule", () => {
     assert.equal(typeof rule?.description, "string");
     assert.equal(typeof rule?.fixable, "boolean");
   }
+});
+
+test("unused-import fixtures classify bindings and transform only proven unused imports", async () => {
+  const fixtureRoot = path.resolve("fixtures/unused-imports");
+  const cases = [
+    ["used-default-import.js", false],
+    ["unused-default-import.js", true],
+    ["used-named-import.js", false],
+    ["unused-named-import.js", true],
+    ["used-namespace-import.js", false],
+    ["alias-import.js", false],
+    ["shadowed-binding.js", true],
+    ["nested-scope.js", false],
+    ["callback-reference.js", false],
+    ["exported-import.js", false],
+    ["side-effect-import.js", false],
+    ["typescript-type-usage.ts", false],
+    ["cookie-parser-regression.js", false],
+    ["unused-cookie-parser.js", true],
+    ["re-export-from.js", false],
+  ] as const;
+
+  for (const [fixtureName, expectedUnused] of cases) {
+    const source = await readFile(path.join(fixtureRoot, fixtureName), "utf8");
+    const result = scanText(source, fixtureName);
+    const hasUnusedImport = result.findings.some(
+      (finding) => finding.rule === "unused-imports",
+    );
+    assert.equal(hasUnusedImport, expectedUnused, fixtureName);
+
+    const projectDir = await mkdtemp(
+      path.join(tmpdir(), "cleaner-import-fix-"),
+    );
+    const sourceFile = path.join(projectDir, fixtureName);
+    await writeFile(sourceFile, source);
+    await applySafeTransforms(projectDir);
+    const transformed = await readFile(sourceFile, "utf8");
+    if (expectedUnused) {
+      assert.doesNotMatch(transformed, /^\s*import\b/m, fixtureName);
+    } else {
+      assert.equal(transformed, source, fixtureName);
+    }
+  }
+});
+
+test("import references are recognized in common expression contexts", () => {
+  const references = [
+    "foo();",
+    "const x = foo;",
+    "const x = foo();",
+    "return foo;",
+    "await foo();",
+    "if (foo) {}",
+    "foo && bar();",
+    'router.post("/", foo);',
+    "const middleware = foo(); app.use(middleware);",
+    "const obj = { handler: foo };",
+    "const obj = { foo };",
+    "const arr = [foo];",
+    "const result = foo ? a : b;",
+  ];
+
+  for (const reference of references) {
+    const source = `import foo from "./foo.js";\nfunction run() { ${reference} }`;
+    const result = scanText(source, "references.js");
+    assert.ok(
+      !result.findings.some((finding) => finding.rule === "unused-imports"),
+      reference,
+    );
+  }
+});
+
+test("a same-named destructured local does not count as an import reference", () => {
+  const source = `import foo from "./foo.js";\nfunction run() { const { foo } = something; return foo; }`;
+  const result = scanText(source, "destructured-shadow.js");
+  assert.ok(
+    result.findings.some((finding) => finding.rule === "unused-imports"),
+  );
+});
+
+test("syntax uncertainty warns and never offers an import removal", () => {
+  const result = scanText(
+    `import foo from "./foo.js";\nconst = ;`,
+    "uncertain.js",
+  );
+  const finding = result.findings.find(
+    (item) => item.rule === "unused-imports",
+  );
+
+  assert.equal(finding?.severity, "WARNING");
+  assert.equal(finding?.fixable, false);
+  assert.match(finding?.message ?? "", /Could not prove.*Keeping it unchanged/);
+});
+
+test("cookie-parser stays intact through default, diff, and source-write CLI paths", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-express-"));
+  const sourceDir = path.join(projectDir, "src");
+  await mkdir(sourceDir, { recursive: true });
+  const sourceFile = path.join(sourceDir, "app.js");
+  const source = `import express from "express";\nimport cookieParser from "cookie-parser";\n\nconst app = express();\napp.use(cookieParser());\n`;
+  await writeFile(sourceFile, source);
+  const cliPath = path.resolve("dist/src/cli/index.js");
+
+  execFileSync("node", [cliPath, "src"], { cwd: projectDir, encoding: "utf8" });
+  assert.equal(await readFile(sourceFile, "utf8"), source);
+  assert.equal(
+    await readFile(path.join(projectDir, "dist", "src", "app.js"), "utf8"),
+    source,
+  );
+
+  const diff = execFileSync("node", [cliPath, "src", "--diff"], {
+    cwd: projectDir,
+    encoding: "utf8",
+  });
+  assert.doesNotMatch(diff, /unused-imports/);
+
+  execFileSync("node", [cliPath, "src", "--write", "--force"], {
+    cwd: projectDir,
+    encoding: "utf8",
+  });
+  assert.match(await readFile(sourceFile, "utf8"), /cookieParser\(\)/);
+  assert.match(await readFile(sourceFile, "utf8"), /import cookieParser/);
 });
 
 test("detects unused parameters and dead-file candidates", () => {

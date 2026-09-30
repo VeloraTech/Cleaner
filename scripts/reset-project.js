@@ -1,18 +1,24 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import readline from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 
-const projectRoot = process.cwd();
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixedTargets = ["dist", "coverage", "tmp", ".tmp", "test-output", "out"];
 
 async function main() {
+  const packageJson = JSON.parse(
+    await fs.readFile(path.join(projectRoot, "package.json"), "utf8"),
+  );
+  const tarballPrefix = packageJson.name.replace(/^@/, "").replace(/\//g, "-");
+  const tarballPattern = new RegExp(`^${escapeRegex(tarballPrefix)}-.*\\.tgz$`);
   const entries = await fs.readdir(projectRoot, { withFileTypes: true });
   const targets = fixedTargets
     .filter((name) => entries.some((entry) => entry.name === name))
     .map((name) => path.join(projectRoot, name));
 
   for (const entry of entries) {
-    if (entry.isFile() && /^cleaner-.*\.tgz$/.test(entry.name)) {
+    if (entry.isFile() && tarballPattern.test(entry.name)) {
       targets.push(path.join(projectRoot, entry.name));
     }
   }
@@ -51,6 +57,10 @@ async function main() {
   }
 
   await removeTargets(targets);
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function removeTargets(targets) {

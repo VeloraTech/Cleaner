@@ -9,6 +9,11 @@ out/
 tmp/
 test-output/
 generated/
+.parcel-cache/
+.turbo/
+.vite/
+.eslintcache
+*.tsbuildinfo
 
 # local generated/test artifacts
 cleaner-*/
@@ -31,6 +36,7 @@ Thumbs.db
 # package manager caches
 .npm/
 .pnpm-store/
+npm-cache/
 
 # local CLI-generated output
 *.tgz

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import ts from "typescript";
 
 import type { Finding, ScanOptions, ScanResult } from "./types.js";
 
@@ -24,20 +25,8 @@ export function scanText(
   };
 
   const normalizedSource = source.toString();
-  const importMatch =
-    normalizedSource.match(/import\s+(?:[^;]+?)\s+from\s+['"][^'"]+['"];?/g) ??
-    [];
-
-  if (importMatch.length > 0 && rules["unused-imports"]) {
-    findings.push({
-      rule: "unused-imports",
-      file: filePath,
-      line: 1,
-      severity: "SAFE",
-      message: "Unused import candidates detected during static scan.",
-      fixable: true,
-      fix: { kind: "remove-import", text: importMatch[0] ?? "" },
-    });
+  if (rules["unused-imports"]) {
+    findings.push(...findUnusedImports(normalizedSource, filePath));
   }
 
   if (rules["unused-variables"]) {
@@ -148,6 +137,158 @@ export function scanText(
   }
 
   return { filesScanned: 1, findings };
+}
+
+function findUnusedImports(source: string, filePath: string): Finding[] {
+  const absolutePath = path.resolve(filePath || "cleaner-input.ts");
+  const scriptKind = getScriptKind(absolutePath);
+  const sourceFile = ts.createSourceFile(
+    absolutePath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind,
+  );
+  const compilerOptions: ts.CompilerOptions = {
+    allowJs: true,
+    checkJs: false,
+    noEmit: true,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.Latest,
+    jsx: ts.JsxEmit.Preserve,
+  };
+  const host = ts.createCompilerHost(compilerOptions);
+  const normalizedFileName = path.normalize(absolutePath);
+  const originalGetSourceFile = host.getSourceFile.bind(host);
+  const originalFileExists = host.fileExists.bind(host);
+  const originalReadFile = host.readFile.bind(host);
+  host.getSourceFile = (
+    name,
+    languageVersion,
+    onError,
+    shouldCreateNewSourceFile,
+  ) =>
+    path.normalize(name) === normalizedFileName
+      ? sourceFile
+      : originalGetSourceFile(
+          name,
+          languageVersion,
+          onError,
+          shouldCreateNewSourceFile,
+        );
+  host.fileExists = (name) =>
+    path.normalize(name) === normalizedFileName || originalFileExists(name);
+  host.readFile = (name) =>
+    path.normalize(name) === normalizedFileName
+      ? source
+      : originalReadFile(name);
+
+  const program = ts.createProgram([absolutePath], compilerOptions, host);
+  const hasSyntaxErrors =
+    program.getSyntacticDiagnostics(sourceFile).length > 0;
+
+  const checker = program.getTypeChecker();
+  const referencedSymbols = new Set<ts.Symbol>();
+  const visitReferences = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) return;
+    if (ts.isShorthandPropertyAssignment(node)) {
+      const symbol = checker.getShorthandAssignmentValueSymbol(node);
+      if (symbol) referencedSymbols.add(symbol);
+    }
+    if (ts.isIdentifier(node)) {
+      const symbol = checker.getSymbolAtLocation(node);
+      if (symbol) referencedSymbols.add(symbol);
+    }
+    ts.forEachChild(node, visitReferences);
+  };
+  visitReferences(sourceFile);
+
+  const findings: Finding[] = [];
+  const visitImports = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node)) {
+      const clause = node.importClause;
+      if (!clause) return;
+
+      const bindings: ts.Identifier[] = [];
+      if (clause.name) bindings.push(clause.name);
+      if (clause.namedBindings) {
+        if (ts.isNamespaceImport(clause.namedBindings)) {
+          bindings.push(clause.namedBindings.name);
+        } else {
+          bindings.push(
+            ...clause.namedBindings.elements.map((item) => item.name),
+          );
+        }
+      }
+
+      const bindingSymbols = bindings.map((binding) =>
+        checker.getSymbolAtLocation(binding),
+      );
+      const analysisUncertain =
+        hasSyntaxErrors ||
+        bindingSymbols.some((symbol) => symbol === undefined);
+      const provenUnused =
+        !analysisUncertain &&
+        bindingSymbols.length > 0 &&
+        bindingSymbols.every(
+          (symbol): symbol is ts.Symbol =>
+            symbol !== undefined && !referencedSymbols.has(symbol),
+        );
+
+      if (analysisUncertain) {
+        const line =
+          sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+            .line + 1;
+        findings.push({
+          rule: "unused-imports",
+          file: filePath,
+          line,
+          severity: "WARNING",
+          message:
+            "Could not prove this import is unused. Keeping it unchanged.",
+          fixable: false,
+        });
+      } else if (provenUnused) {
+        const line =
+          sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+            .line + 1;
+        findings.push({
+          rule: "unused-imports",
+          file: filePath,
+          line,
+          severity: "SAFE",
+          message: `Imported binding${bindings.length === 1 ? "" : "s"} '${bindings.map((binding) => binding.text).join(", ")}' has no references in this file.`,
+          fixable: true,
+          fix: {
+            kind: "remove-import",
+            text: node.getText(sourceFile),
+            start: node.getStart(sourceFile),
+            end: node.end,
+          },
+        });
+      }
+      return;
+    }
+    ts.forEachChild(node, visitImports);
+  };
+  visitImports(sourceFile);
+  return findings;
+}
+
+function getScriptKind(filePath: string): ts.ScriptKind {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".tsx":
+      return ts.ScriptKind.TSX;
+    case ".jsx":
+      return ts.ScriptKind.JSX;
+    case ".js":
+    case ".mjs":
+    case ".cjs":
+      return ts.ScriptKind.JS;
+    default:
+      return ts.ScriptKind.TS;
+  }
 }
 
 export async function scanProject(

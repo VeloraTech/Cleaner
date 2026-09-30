@@ -23,6 +23,8 @@ export interface Finding {
   fix?: {
     kind: "remove-import" | "remove-statement" | "remove-variable";
     text: string;
+    start?: number;
+    end?: number;
   };
 }
 
