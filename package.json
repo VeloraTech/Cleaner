@@ -1,6 +1,6 @@
 {
   "name": "@coachlogic/cleaner",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "description": "A safety-first static-analysis CLI for JavaScript and TypeScript projects.",
   "license": "MIT",
   "repository": {
@@ -35,7 +35,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/tests/**/*.test.js",
     "release:check": "node scripts/release-check.mjs",
-    "postinstall": "node -e \"console.log('Cleaner installed.\\nPreview: npx cleaner . --diff\\nCreate a cleaned copy: npx cleaner .')\"",
+    "postinstall": "node -e \"console.log('Cleaner installed.\\nHelp: npx cleaner --help\\nPreview: npx cleaner . --diff\\nCreate a cleaned copy: npx cleaner .')\"",
     "prepack": "npm run build",
     "pack": "npm pack",
     "start": "node dist/src/cli/index.js",

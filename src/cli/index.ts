@@ -1,5 +1,8 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import readline from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 
 import {
@@ -14,7 +17,18 @@ import {
   writeCleanedCopy,
 } from "../core/transformer.js";
 import { resolveOutputPlan } from "../core/output.js";
-import { RULES } from "../core/rules.js";
+
+const packageVersion = (
+  JSON.parse(
+    readFileSync(
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "../../../package.json",
+      ),
+      "utf8",
+    ),
+  ) as { version: string }
+).version;
 
 const program = new Command();
 program.name("cleaner");
@@ -34,7 +48,7 @@ program
   .option("-o, --output <directory>", "output directory (default: dist)")
   .option("--force", "skip confirmation for explicit source modification")
   .option("--config <path>", "path to cleaner config file")
-  .version("0.1.0");
+  .version(packageVersion);
 
 program.action(async (targetPath: string, options: Record<string, any>) => {
   const resolvedPath = await resolveConfigPath(targetPath, options.config);
@@ -53,7 +67,12 @@ program.action(async (targetPath: string, options: Record<string, any>) => {
     options.diff ||
     (!options.write && !options.json && !options.diff)
   ) {
-    printResult(targetPath, result, config.rules, options.json);
+    const mode = options.diff
+      ? "Diff preview (read-only)"
+      : options.check
+        ? "Check (read-only)"
+        : "Cleaned copy";
+    printResult(targetPath, result, config.rules, options.json, mode);
   }
 
   if (options.diff) {
@@ -61,7 +80,9 @@ program.action(async (targetPath: string, options: Record<string, any>) => {
       rules: config.rules,
       ignore: config.ignore,
     });
-    console.log(diffLines.join("\n") || "No safe diff output available.");
+    console.log("\nProposed safe changes:");
+    console.log(diffLines.join("\n") || "  No safe changes to propose.");
+    console.log("\nDiff preview only. No files were changed or written.");
     return;
   }
 
@@ -128,24 +149,50 @@ function printResult(
   },
   rules: Record<string, boolean>,
   json: boolean,
+  mode: string,
 ): void {
   if (json) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
 
-  console.log("Cleaner v0.1.0");
-  console.log(`Scanning: ${targetPath}`);
+  const activeRules = [
+    "unused-imports",
+    "unused-variables",
+    "unused-parameters",
+    "console",
+    "debugger",
+    "dead-code",
+    "dead-files",
+  ];
+  const severityOrder = ["SAFE", "WARNING", "INFO", "ERROR"];
+  const severityCounts = severityOrder
+    .map((severity) =>
+      `${severity} ${result.findings.filter((finding) => finding.severity === severity).length}`,
+    )
+    .join(", ");
+
+  console.log(`Cleaner v${packageVersion}`);
+  console.log(`Mode: ${mode}`);
+  console.log(`Input: ${targetPath}`);
   console.log(`Files scanned: ${result.filesScanned}`);
-  console.log(`Findings: ${result.findings.length}`);
+  console.log(`Findings: ${result.findings.length} (${severityCounts})`);
   console.log(
-    `Rules enabled: ${Object.keys(RULES).filter((id) => rules[id] !== false).length}`,
+    `Implemented rules enabled: ${activeRules.filter((id) => rules[id] !== false).length}/${activeRules.length}`,
   );
 
-  for (const finding of result.findings) {
-    console.log(
-      `${finding.severity} ${finding.rule} ${finding.file}:${finding.line} - ${finding.message}`,
+  for (const severity of severityOrder) {
+    const findings = result.findings.filter(
+      (finding) => finding.severity === severity,
     );
+    if (findings.length === 0) continue;
+    console.log(`\n${severity} findings:`);
+    for (const finding of findings) {
+      const displayPath = finding.file.replace(/\\/g, "/");
+      console.log(
+        `  ${finding.rule} ${displayPath}:${finding.line} - ${finding.message}`,
+      );
+    }
   }
 }
 

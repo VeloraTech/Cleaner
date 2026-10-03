@@ -109,6 +109,37 @@ test("detects unused variables and dead-code candidates", () => {
   assert.ok(result.findings.some((finding) => finding.rule === "dead-code"));
 });
 
+test("dead-code detection does not flag reachable code after a conditional return", () => {
+  const source = `function render(enabled) {
+  if (!enabled) return null;
+  const title = "Portfolio";
+  return title;
+}`;
+  const result = scanText(source, "component.jsx", {
+    rules: { "dead-code": true },
+  });
+
+  assert.equal(
+    result.findings.some((finding) => finding.rule === "dead-code"),
+    false,
+  );
+});
+
+test("dead-code findings point to the first unreachable statement", () => {
+  const source = `function render() {
+  return null;
+  const unreachable = true;
+}`;
+  const result = scanText(source, "dead-code.js", {
+    rules: { "dead-code": true },
+  });
+  const finding = result.findings.find((item) => item.rule === "dead-code");
+
+  assert.equal(finding?.line, 3);
+  assert.equal(finding?.severity, "WARNING");
+  assert.equal(finding?.fixable, false);
+});
+
 test("unused-variable analysis ignores strings and respects lexical bindings", () => {
   const source = `
     const token = 42;
@@ -149,6 +180,19 @@ test("unused-variable analysis handles destructuring by binding", () => {
     .map((finding) => finding.message.match(/'([^']+)'/)?.[1]);
 
   assert.deepEqual(unusedNames, ["unused"]);
+});
+
+test("unused-variable analysis keeps exported bindings for external consumers", () => {
+  const result = scanText(
+    `export const bootLines = ["ready"];\nexport function start() { return bootLines; }`,
+    "src/data/terminal.js",
+    { rules: { "unused-variables": true } },
+  );
+
+  assert.equal(
+    result.findings.some((finding) => finding.rule === "unused-variables"),
+    false,
+  );
 });
 
 test("unused-parameter analysis handles callbacks and shadowing", () => {
@@ -374,6 +418,7 @@ test("diff mode reports proposed changes", async () => {
 
   assert.match(output, /--- .*demo\.ts/i);
   assert.match(output, /console|debugger|unused-imports/i);
+  assert.match(output, /Diff preview only\. No files were changed or written\./);
 });
 
 test("default mode writes a cleaned copy and preserves the source", async () => {

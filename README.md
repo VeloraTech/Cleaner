@@ -14,7 +14,7 @@ Cleaner is designed to:
 - scan JavaScript and TypeScript projects
 - detect unused imports, variables, and parameters
 - flag and safely remove standalone console/debugger statements
-- report heuristic dead-code and legacy-file candidates
+- report unreachable-statement and legacy-file candidates
 - respect ignore rules and config options
 - preview changes in diff mode
 - apply only safe transformations in explicit write mode
@@ -36,10 +36,22 @@ Developer tooling should help people understand what may be unnecessary, not gue
 
 ```bash
 npm install @coachlogic/cleaner
+npx cleaner --help
 npx cleaner .
 ```
 
-After installation, preview findings without writing output:
+If you want npm to display Cleaner's post-install instructions in the terminal,
+install with `--foreground-scripts` (npm may suppress dependency lifecycle output
+otherwise):
+
+```bash
+npm install --foreground-scripts @coachlogic/cleaner
+```
+
+Without `--foreground-scripts`, npm may suppress dependency lifecycle output.
+After installation, `npx cleaner --help` always prints the full command help.
+
+Preview findings without writing output:
 
 ```bash
 npx cleaner . --diff
@@ -215,12 +227,13 @@ and exit behavior, see [docs/cli.md](docs/cli.md).
 ```
 
 The scanner currently evaluates unused imports, variables, parameters, console
-calls, debugger statements, heuristic dead-code candidates, and legacy-named
-files. The registry also lists `unused-functions`, `unused-exports`,
+calls, debugger statements, unreachable statements after unconditional control
+flow, and legacy-named files. The registry also lists `unused-functions`, `unused-exports`,
 `duplicate-code`, and `artifacts`, but those rules do not currently produce
 findings. Console calls are removed only when they are standalone statements in
 a safe statement list; calls embedded in expressions or unbraced control-flow
-bodies are preserved and reported as warnings.
+bodies are preserved and reported as warnings. Dead-code findings are
+warning-only and are never automatically removed.
 
 ## Supported languages
 

@@ -73,9 +73,11 @@ Run these from the repository root:
 
 After `npm link`, use `cleaner --help` or `cleaner .` from another directory.
 
-After installing the published package, run `npx cleaner . --diff` to preview
-findings, or `npx cleaner .` to write a cleaned copy under `dist/`. The install
-lifecycle prints these starter commands as well.
+After installing the published package, run `npx cleaner --help` for options,
+`npx cleaner . --diff` to preview findings, or `npx cleaner .` to write a
+cleaned copy under `dist/`. npm may suppress dependency lifecycle output; use
+`npm install --foreground-scripts @coachlogic/cleaner` to see the post-install
+starter commands in the terminal.
 
 For frequently used commands, add aliases to the consuming project's
 `package.json`:
@@ -108,8 +110,11 @@ After publication, users can run `npm install @coachlogic/cleaner` and
 `npx cleaner .`.
 
 The scanner currently evaluates unused imports, variables, parameters, console
-calls, debugger statements, heuristic dead-code candidates, and legacy-named
-files. The registry also lists `unused-functions`, `unused-exports`,
+calls, debugger statements, AST-detected statements after unconditional
+return/throw/break/continue, and legacy-named files. The registry also lists `unused-functions`, `unused-exports`,
 `duplicate-code`, and `artifacts`, but those rules do not currently produce
 findings. Console calls are removed only as standalone statements in a safe
 statement list; embedded calls are preserved and reported as warnings.
+Dead-code findings are warnings and are not automatically removed. npm may hide
+dependency post-install output unless installation uses
+`--foreground-scripts`.

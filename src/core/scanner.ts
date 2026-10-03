@@ -29,7 +29,8 @@ export function scanText(
     rules["unused-imports"] ||
     rules["unused-variables"] ||
     rules["unused-parameters"] ||
-    rules.console
+    rules.console ||
+    rules["dead-code"]
       ? createSemanticContext(normalizedSource, filePath)
       : undefined;
   if (rules["unused-imports"]) {
@@ -55,21 +56,7 @@ export function scanText(
   }
 
   if (rules["dead-code"]) {
-    const deadCodeMatches =
-      normalizedSource.match(
-        /return\s+.*;\s*\n\s*(const|let|var|if|for|while|function|export)/g,
-      ) ?? [];
-    if (deadCodeMatches.length > 0) {
-      findings.push({
-        rule: "dead-code",
-        file: filePath,
-        line: 1,
-        severity: "WARNING",
-        message:
-          "Potential unreachable code detected after an unconditional return.",
-        fixable: false,
-      });
-    }
+    findings.push(...findDeadCode(semanticContext!, filePath));
   }
 
   if (rules["dead-files"]) {
@@ -160,6 +147,55 @@ function findConsoleStatements(
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
+  return findings;
+}
+
+function findDeadCode(context: SemanticContext, filePath: string): Finding[] {
+  if (context.hasSyntaxErrors) return [];
+  const findings: Finding[] = [];
+
+  const visitStatementList = (statements: ts.NodeArray<ts.Statement>): void => {
+    let terminated = false;
+    for (const statement of statements) {
+      if (terminated) {
+        const line =
+          context.sourceFile.getLineAndCharacterOfPosition(
+            statement.getStart(context.sourceFile),
+          ).line + 1;
+        findings.push({
+          rule: "dead-code",
+          file: filePath,
+          line,
+          severity: "WARNING",
+          message:
+            "Potential unreachable statement follows an unconditional return, throw, break, or continue.",
+          fixable: false,
+        });
+        return;
+      }
+
+      visit(statement);
+      terminated =
+        ts.isReturnStatement(statement) ||
+        ts.isThrowStatement(statement) ||
+        ts.isBreakStatement(statement) ||
+        ts.isContinueStatement(statement);
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isSourceFile(node) || ts.isBlock(node)) {
+      visitStatementList(node.statements);
+      return;
+    }
+    if (ts.isCaseClause(node) || ts.isDefaultClause(node)) {
+      visitStatementList(node.statements);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(context.sourceFile);
   return findings;
 }
 
@@ -414,7 +450,13 @@ function addUnusedBindingFinding(
   findings: Finding[],
 ): void {
   const symbol = context.checker.getSymbolAtLocation(binding);
-  if (!symbol || referencedSymbols.has(symbol)) return;
+  if (
+    !symbol ||
+    referencedSymbols.has(symbol) ||
+    (rule === "unused-variables" && isExportedSymbol(symbol))
+  ) {
+    return;
+  }
 
   const line =
     context.sourceFile.getLineAndCharacterOfPosition(
@@ -428,6 +470,30 @@ function addUnusedBindingFinding(
     message: `${label} '${binding.text}' appears unused.`,
     fixable: false,
   });
+}
+
+function isExportedSymbol(symbol: ts.Symbol): boolean {
+  return (
+    symbol.declarations?.some((declaration) => {
+      let current: ts.Node | undefined = declaration;
+      while (current && !ts.isSourceFile(current)) {
+        if (
+          ts.canHaveModifiers(current) &&
+          ts
+            .getModifiers(current)
+            ?.some(
+              (modifier) =>
+                modifier.kind === ts.SyntaxKind.ExportKeyword ||
+                modifier.kind === ts.SyntaxKind.DefaultKeyword,
+            )
+        ) {
+          return true;
+        }
+        current = current.parent;
+      }
+      return false;
+    }) ?? false
+  );
 }
 
 function getScriptKind(filePath: string): ts.ScriptKind {
@@ -469,7 +535,11 @@ export async function scanProject(
 
   for (const file of files) {
     const content = await fs.readFile(file, "utf8");
-    const scanned = scanText(content, path.relative(rootDir, file), {
+    const relativeFile = path
+      .relative(rootDir, file)
+      .split(path.sep)
+      .join("/");
+    const scanned = scanText(content, relativeFile, {
       rules: normalizeRules(rules),
       ignore,
     });

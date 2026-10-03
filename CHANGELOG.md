@@ -8,7 +8,8 @@ The project is currently experimental, so this changelog will evolve alongside t
 
 ### Added
 
-- Post-install CLI starter commands and documented project script aliases.
+- Post-install CLI starter commands, including `npx cleaner --help`.
+- Clear severity-grouped CLI output with explicit read-only diff status.
 
 ### Fixed
 
@@ -16,6 +17,12 @@ The project is currently experimental, so this changelog will evolve alongside t
   delimiters, and surrounding code remain intact.
 - Keep console calls in expression or unbraced control-flow contexts unchanged
   when their removal cannot be proven safe.
+- Replace regex dead-code detection with AST statement-list analysis and
+  accurate finding locations.
+- Avoid unused-variable warnings for exported bindings that may have external
+  consumers.
+- Load the CLI's displayed version from package metadata instead of a stale
+  hard-coded version.
 
 ## 0.1.4 - 2026-09-30
 

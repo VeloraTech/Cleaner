@@ -24,5 +24,7 @@ Console calls are also located with the TypeScript AST. Cleaner removes only a
 standalone console expression statement in a block, module body, or switch case.
 Calls embedded in another expression or used as an unbraced control-flow body
 remain unchanged and receive a warning. Dead-code and legacy-file checks remain
-heuristic and report-only; unused-function, unused-export, duplicate-code, and
-artifact rules are registered but not currently analyzed.
+report-only. Dead-code analysis uses AST statement lists to detect statements
+after unconditional return, throw, break, or continue. Legacy-file checks are
+heuristic. Unused-function, unused-export, duplicate-code, and artifact rules
+are registered but not currently analyzed.
