@@ -42,6 +42,7 @@ Options:
 - `cleaner src` writes a cleaned copy to `dist/src`.
 - `cleaner src --output cleaned` writes a cleaned copy to `cleaned/src`.
 - `--diff` and `--check` are read-only and do not create output directories.
+- `--check` exits with code `1` if any findings are present, otherwise `0`.
 - `--write` targets the source directory and requires interactive `y` confirmation.
 - `--force` is accepted only for that explicit source-modification workflow.
 - Output paths that overlap the source tree are rejected unless the user explicitly selected the source itself.
@@ -72,13 +73,30 @@ Run these from the repository root:
 
 After `npm link`, use `cleaner --help` or `cleaner .` from another directory.
 
+After installing the published package, run `npx cleaner . --diff` to preview
+findings, or `npx cleaner .` to write a cleaned copy under `dist/`. The install
+lifecycle prints these starter commands as well.
+
+For frequently used commands, add aliases to the consuming project's
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "cleaner:preview": "cleaner . --diff",
+    "cleaner:check": "cleaner . --check",
+    "cleaner:copy": "cleaner ."
+  }
+}
+```
+
 ## Packaging
 
 `npm pack` creates a file named from the scoped package, for example
-`coachlogic-cleaner-0.1.4.tgz`. Install that local package elsewhere with:
+`coachlogic-cleaner-0.1.5.tgz`. Install that local package elsewhere with:
 
 ```bash
-npm install ./coachlogic-cleaner-0.1.4.tgz
+npm install ./coachlogic-cleaner-0.1.5.tgz
 npx cleaner .
 ```
 
@@ -88,3 +106,10 @@ the required npm trusted-publisher setup.
 
 After publication, users can run `npm install @coachlogic/cleaner` and
 `npx cleaner .`.
+
+The scanner currently evaluates unused imports, variables, parameters, console
+calls, debugger statements, heuristic dead-code candidates, and legacy-named
+files. The registry also lists `unused-functions`, `unused-exports`,
+`duplicate-code`, and `artifacts`, but those rules do not currently produce
+findings. Console calls are removed only as standalone statements in a safe
+statement list; embedded calls are preserved and reported as warnings.

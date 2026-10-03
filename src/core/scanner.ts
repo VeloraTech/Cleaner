@@ -28,7 +28,8 @@ export function scanText(
   const semanticContext =
     rules["unused-imports"] ||
     rules["unused-variables"] ||
-    rules["unused-parameters"]
+    rules["unused-parameters"] ||
+    rules.console
       ? createSemanticContext(normalizedSource, filePath)
       : undefined;
   if (rules["unused-imports"]) {
@@ -41,6 +42,16 @@ export function scanText(
 
   if (rules["unused-parameters"]) {
     findings.push(...findUnusedParameters(semanticContext!, filePath));
+  }
+
+  if (rules.console) {
+    findings.push(
+      ...findConsoleStatements(
+        semanticContext!.sourceFile,
+        semanticContext!.hasSyntaxErrors,
+        filePath,
+      ),
+    );
   }
 
   if (rules["dead-code"]) {
@@ -78,20 +89,6 @@ export function scanText(
     }
   }
 
-  const consoleMatch =
-    normalizedSource.match(/console\.(log|debug|info|warn|error)\s*\(/g) ?? [];
-  if (consoleMatch.length > 0 && rules.console) {
-    findings.push({
-      rule: "console",
-      file: filePath,
-      line: 1,
-      severity: "SAFE",
-      message: `Console debug call(s) detected: ${consoleMatch.length}.`,
-      fixable: true,
-      fix: { kind: "remove-statement", text: consoleMatch[0] ?? "" },
-    });
-  }
-
   const debuggerMatches = normalizedSource.match(/debugger\s*;/g) ?? [];
   if (debuggerMatches.length > 0 && rules.debugger) {
     findings.push({
@@ -106,6 +103,64 @@ export function scanText(
   }
 
   return { filesScanned: 1, findings };
+}
+
+function findConsoleStatements(
+  sourceFile: ts.SourceFile,
+  hasSyntaxErrors: boolean,
+  filePath: string,
+): Finding[] {
+  if (hasSyntaxErrors) return [];
+  const findings: Finding[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "console" &&
+      ["log", "debug", "info", "warn", "error"].includes(
+        node.expression.name.text,
+      )
+    ) {
+      const statement =
+        ts.isExpressionStatement(node.parent) && node.parent.expression === node
+          ? node.parent
+          : undefined;
+      const safeParent =
+        statement &&
+        (ts.isBlock(statement.parent) ||
+          ts.isSourceFile(statement.parent) ||
+          ts.isCaseClause(statement.parent) ||
+          ts.isDefaultClause(statement.parent));
+      const line =
+        sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+          .line + 1;
+
+      findings.push({
+        rule: "console",
+        file: filePath,
+        line,
+        severity: safeParent ? "SAFE" : "WARNING",
+        message: safeParent
+          ? "Standalone console debug call can be removed safely."
+          : "Console call is embedded in a context Cleaner cannot safely remove; keeping it unchanged.",
+        fixable: Boolean(safeParent),
+        ...(safeParent && statement
+          ? {
+              fix: {
+                kind: "remove-statement" as const,
+                text: statement.getText(sourceFile),
+                start: statement.getStart(sourceFile),
+                end: statement.end,
+              },
+            }
+          : {}),
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return findings;
 }
 
 interface SemanticContext {

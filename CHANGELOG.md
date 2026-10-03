@@ -6,7 +6,16 @@ The project is currently experimental, so this changelog will evolve alongside t
 
 ## Unreleased
 
-No unreleased changes.
+### Added
+
+- Post-install CLI starter commands and documented project script aliases.
+
+### Fixed
+
+- Remove console calls by AST statement ranges so callback braces, call
+  delimiters, and surrounding code remain intact.
+- Keep console calls in expression or unbraced control-flow contexts unchanged
+  when their removal cannot be proven safe.
 
 ## 0.1.4 - 2026-09-30
 

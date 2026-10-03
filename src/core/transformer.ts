@@ -39,10 +39,10 @@ export async function applySafeTransforms(
 
   for (const [filePath, fileFindings] of findingsByFile) {
     let updated = await fs.readFile(filePath, "utf8");
-    const importFixes = fileFindings
+    const rangeFixes = fileFindings
       .filter(
         (finding) =>
-          finding.rule === "unused-imports" &&
+          (finding.rule === "unused-imports" || finding.rule === "console") &&
           finding.fix?.start !== undefined &&
           finding.fix.end !== undefined,
       )
@@ -52,19 +52,13 @@ export async function applySafeTransforms(
       }))
       .sort((left, right) => right.start - left.start);
 
-    for (const fix of importFixes) {
+    for (const fix of rangeFixes) {
       updated = `${updated.slice(0, fix.start)}${updated.slice(fix.end)}`;
     }
 
     for (const finding of fileFindings) {
       if (finding.rule === "debugger") {
         updated = updated.replace(/debugger\s*;/g, "");
-      }
-      if (finding.rule === "console") {
-        updated = updated.replace(
-          /console\.(log|debug|info|warn|error)\s*\([^;]*\);?/g,
-          "",
-        );
       }
     }
     byFile.set(filePath, updated);

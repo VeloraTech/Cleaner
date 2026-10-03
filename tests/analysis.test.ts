@@ -31,6 +31,44 @@ test("detects unused imports and debug statements in code text", () => {
   assert.ok(result.findings.some((finding) => finding.rule === "debugger"));
 });
 
+test("console cleanup preserves surrounding callback and call syntax", async () => {
+  const projectDir = await mkdtemp(
+    path.join(tmpdir(), "cleaner-console-block-"),
+  );
+  const filePath = path.join(projectDir, "server.js");
+  const source = `app.listen(PORT, () => {\n  console.log("started");\n});\n`;
+  await writeFile(filePath, source);
+
+  await applySafeTransforms(projectDir, {
+    rules: { console: true },
+  });
+
+  const updated = await readFile(filePath, "utf8");
+  assert.doesNotMatch(updated, /console\.log/);
+  assert.match(updated, /app\.listen\(PORT, \(\) => \{\s*\}\);/);
+});
+
+test("console calls in expression and unbraced control-flow contexts are kept", () => {
+  const result = scanText(
+    `if (ready) console.log("ready");\nconst result = console.log("value");`,
+    "unsafe-console-context.js",
+    { rules: { console: true } },
+  );
+
+  assert.equal(
+    result.findings.filter((item) => item.rule === "console").length,
+    2,
+  );
+  assert.equal(
+    result.findings.every((item) => item.severity === "WARNING"),
+    true,
+  );
+  assert.equal(
+    result.findings.every((item) => !item.fixable),
+    true,
+  );
+});
+
 test("scanProject reports files and safe findings without writing", async () => {
   const dir = await import("node:fs/promises").then((fs) =>
     fs.mkdtemp(path.join(tmpdir(), "cleaner-output-")),

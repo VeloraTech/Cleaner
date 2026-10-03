@@ -12,9 +12,9 @@ Cleaner is a local-first static-analysis CLI for JavaScript and TypeScript proje
 Cleaner is designed to:
 
 - scan JavaScript and TypeScript projects
-- detect unused imports and variables
-- flag console/debugger statements
-- report dead-code and dead-file candidates conservatively
+- detect unused imports, variables, and parameters
+- flag and safely remove standalone console/debugger statements
+- report heuristic dead-code and legacy-file candidates
 - respect ignore rules and config options
 - preview changes in diff mode
 - apply only safe transformations in explicit write mode
@@ -39,6 +39,29 @@ npm install @coachlogic/cleaner
 npx cleaner .
 ```
 
+After installation, preview findings without writing output:
+
+```bash
+npx cleaner . --diff
+```
+
+To create a cleaned copy, run `npx cleaner .`; Cleaner writes to `dist/` and
+leaves the source untouched. You can pin common commands in your project's
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "cleaner:preview": "cleaner . --diff",
+    "cleaner:check": "cleaner . --check",
+    "cleaner:copy": "cleaner ."
+  }
+}
+```
+
+Then run `npm run cleaner:preview`, `npm run cleaner:check`, or
+`npm run cleaner:copy`.
+
 For repository development:
 
 ```bash
@@ -56,11 +79,11 @@ Create a build artifact locally:
 npm pack
 ```
 
-This creates a versioned archive, for example `coachlogic-cleaner-0.1.4.tgz`.
+This creates a versioned archive, for example `coachlogic-cleaner-0.1.5.tgz`.
 Share the generated file; another user can install it with:
 
 ```bash
-npm install ./coachlogic-cleaner-0.1.4.tgz
+npm install ./coachlogic-cleaner-0.1.5.tgz
 npx cleaner .
 ```
 
@@ -190,6 +213,14 @@ and exit behavior, see [docs/cli.md](docs/cli.md).
   "ignore": ["node_modules/**", "dist/**", "coverage/**"]
 }
 ```
+
+The scanner currently evaluates unused imports, variables, parameters, console
+calls, debugger statements, heuristic dead-code candidates, and legacy-named
+files. The registry also lists `unused-functions`, `unused-exports`,
+`duplicate-code`, and `artifacts`, but those rules do not currently produce
+findings. Console calls are removed only when they are standalone statements in
+a safe statement list; calls embedded in expressions or unbraced control-flow
+bodies are preserved and reported as warnings.
 
 ## Supported languages
 

@@ -19,3 +19,10 @@ properties are included. Parse or binding uncertainty never produces an import
 removal. Import transformations use the AST declaration's source range rather
 than matching identifier text. Variable and parameter findings remain
 warning-only and non-fixable.
+
+Console calls are also located with the TypeScript AST. Cleaner removes only a
+standalone console expression statement in a block, module body, or switch case.
+Calls embedded in another expression or used as an unbraced control-flow body
+remain unchanged and receive a warning. Dead-code and legacy-file checks remain
+heuristic and report-only; unused-function, unused-export, duplicate-code, and
+artifact rules are registered but not currently analyzed.
