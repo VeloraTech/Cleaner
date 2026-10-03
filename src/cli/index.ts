@@ -10,13 +10,15 @@ import {
   loadConfigFromFile,
   resolveConfigPath,
 } from "../config/config.js";
-import { scanProject } from "../core/scanner.js";
+import { analyzeProject } from "../core/scanner.js";
 import {
-  applySafeTransforms,
-  buildDiffForProject,
-  writeCleanedCopy,
+  applyAnalysisPlan,
+  buildDiffFromAnalysis,
+  writeCleanedCopyFromAnalysis,
 } from "../core/transformer.js";
 import { resolveOutputPlan } from "../core/output.js";
+import { RULES } from "../core/rules.js";
+import type { Project, ScanResult } from "../core/types.js";
 
 const packageVersion = (
   JSON.parse(
@@ -56,10 +58,14 @@ program.action(async (targetPath: string, options: Record<string, any>) => {
     ? await loadConfigFromFile(resolvedPath)
     : await loadConfig();
 
-  const result = await scanProject(targetPath, {
+  const analysis = await analyzeProject(targetPath, {
     rules: config.rules,
     ignore: config.ignore,
   });
+  const result: ScanResult = {
+    filesScanned: analysis.project.files.length,
+    findings: analysis.findings,
+  };
 
   if (
     options.check ||
@@ -72,14 +78,19 @@ program.action(async (targetPath: string, options: Record<string, any>) => {
       : options.check
         ? "Check (read-only)"
         : "Cleaned copy";
-    printResult(targetPath, result, config.rules, options.json, mode);
+    printResult(
+      targetPath,
+      result,
+      config.rules,
+      options.json,
+      mode,
+      analysis.project,
+      analysis.sessionId,
+    );
   }
 
   if (options.diff) {
-    const diffLines = await buildDiffForProject(targetPath, {
-      rules: config.rules,
-      ignore: config.ignore,
-    });
+    const diffLines = buildDiffFromAnalysis(analysis);
     console.log("\nProposed safe changes:");
     console.log(diffLines.join("\n") || "  No safe changes to propose.");
     console.log("\nDiff preview only. No files were changed or written.");
@@ -106,7 +117,7 @@ program.action(async (targetPath: string, options: Record<string, any>) => {
 
   if (outputPlan.sourceModification) {
     await confirmSourceModification(targetPath, options.force, options.write);
-    const applied = await applySafeTransforms(outputPlan.inputPath, {
+    const applied = await applyAnalysisPlan(analysis, outputPlan.inputPath, {
       rules: config.rules,
       ignore: config.ignore,
     });
@@ -114,8 +125,8 @@ program.action(async (targetPath: string, options: Record<string, any>) => {
     return;
   }
 
-  const applied = await writeCleanedCopy(
-    outputPlan.inputPath,
+  const applied = await writeCleanedCopyFromAnalysis(
+    analysis,
     outputPlan.outputPath,
     {
       rules: config.rules,
@@ -150,25 +161,38 @@ function printResult(
   rules: Record<string, boolean>,
   json: boolean,
   mode: string,
+  project: Project,
+  sessionId: string,
 ): void {
   if (json) {
-    console.log(JSON.stringify(result, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          sessionId,
+          project: {
+            id: project.id,
+            root: project.root,
+            tsconfigPath: project.tsconfigPath,
+            configDiagnostics: project.configDiagnostics,
+            graph: project.graph,
+          },
+          ...result,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 
-  const activeRules = [
-    "unused-imports",
-    "unused-variables",
-    "unused-parameters",
-    "console",
-    "debugger",
-    "dead-code",
-    "dead-files",
-  ];
+  const activeRules = Object.values(RULES)
+    .filter((rule) => rule.status === "implemented")
+    .map((rule) => rule.id);
   const severityOrder = ["SAFE", "WARNING", "INFO", "ERROR"];
   const severityCounts = severityOrder
-    .map((severity) =>
-      `${severity} ${result.findings.filter((finding) => finding.severity === severity).length}`,
+    .map(
+      (severity) =>
+        `${severity} ${result.findings.filter((finding) => finding.severity === severity).length}`,
     )
     .join(", ");
 
@@ -176,6 +200,9 @@ function printResult(
   console.log(`Mode: ${mode}`);
   console.log(`Input: ${targetPath}`);
   console.log(`Files scanned: ${result.filesScanned}`);
+  console.log(
+    `Project graph: ${project.graph.modules.length} modules, ${project.graph.symbols.length} symbols, ${project.graph.references.length} references, ${project.graph.dependencies.length} dependencies, ${project.graph.calls.length} calls`,
+  );
   console.log(`Findings: ${result.findings.length} (${severityCounts})`);
   console.log(
     `Implemented rules enabled: ${activeRules.filter((id) => rules[id] !== false).length}/${activeRules.length}`,

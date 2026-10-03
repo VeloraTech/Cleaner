@@ -45,6 +45,7 @@ function validatePackageMetadata() {
   }
   for (const expectedFile of [
     "dist/src",
+    "postinstall.cjs",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
@@ -107,6 +108,7 @@ function verifyPackManifest(manifestPath, tag) {
   );
   const requiredFiles = [
     "package.json",
+    "postinstall.cjs",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",

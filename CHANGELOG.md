@@ -8,7 +8,9 @@ The project is currently experimental, so this changelog will evolve alongside t
 
 ### Added
 
-- Post-install CLI starter commands, including `npx cleaner --help`.
+- Post-install CLI starter commands, including `npx cleaner --help`, with
+  foreground install guidance for npm's lifecycle-output buffering. The
+  installer uses a packaged script file rather than inline command source.
 - Clear severity-grouped CLI output with explicit read-only diff status.
 
 ### Fixed
@@ -23,6 +25,24 @@ The project is currently experimental, so this changelog will evolve alongside t
   consumers.
 - Load the CLI's displayed version from package metadata instead of a stale
   hard-coded version.
+
+## 0.2.0 - 2026-10-03
+
+### Added
+
+- Project loading is separated from analysis and creates one shared TypeScript
+  Program using the project's tsconfig where available.
+- Project graph for modules, imports, exports, symbols, references, dependencies,
+  and reliably resolved calls.
+- Project-level unused-function and unused-export findings, plus structured
+  static evidence and confidence on findings.
+- Structured transformation plans validated against a temporary project copy
+  for parsing and newly introduced TypeScript diagnostics before application.
+
+### Changed
+
+- Document the actual available analysis and mark duplicate-code and artifact
+  analysis as planned rather than active capabilities.
 
 ## 0.1.4 - 2026-09-30
 

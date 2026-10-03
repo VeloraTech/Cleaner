@@ -1,79 +1,62 @@
-import { collectProjectFiles, scanProject } from "./scanner.js";
+import { analyzeProject } from "./scanner.js";
+import { collectProjectFiles } from "./project-analysis.js";
+import {
+  applyPlanEdits,
+  createTransformationPlan,
+  findFileForEdit,
+  formatPlanDiff,
+} from "./transformation-plan.js";
+import { validateTransformationPlan } from "./validation.js";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
-import type { Finding, ScanOptions } from "./types.js";
+import type {
+  ProjectAnalysisResult,
+  Finding,
+  ProjectFile,
+  ScanOptions,
+  TransformationPlan,
+} from "./types.js";
 
 export async function buildDiffForProject(
   rootDir: string,
   options: Partial<ScanOptions> = {},
 ): Promise<string[]> {
-  const { findings } = await scanProject(rootDir, options);
-  const lines: string[] = [];
+  const analysis = await analyzeProject(rootDir, options);
+  return buildDiffFromAnalysis(analysis);
+}
 
-  for (const finding of findings.filter((item) => item.fix)) {
-    lines.push(`--- ${finding.file} (${finding.severity}) ---`);
-    lines.push(`Reason: ${finding.message}`);
-    lines.push(`Change: ${finding.fix?.text ?? ""}`);
-    lines.push("");
-  }
-
-  return lines;
+export function buildDiffFromAnalysis(
+  analysis: ProjectAnalysisResult,
+): string[] {
+  return formatPlanDiff(createTransformationPlan(analysis));
 }
 
 export async function applySafeTransforms(
   rootDir: string,
   options: Partial<ScanOptions> = {},
 ): Promise<number> {
-  const { findings } = await scanProject(rootDir, options);
-  const byFile = new Map<string, string>();
-  const findingsByFile = new Map<string, Finding[]>();
-  for (const finding of findings.filter(
-    (item) => item.fix && item.severity === "SAFE",
-  )) {
-    const filePath = path.join(rootDir, finding.file);
-    const fileFindings = findingsByFile.get(filePath) ?? [];
-    fileFindings.push(finding);
-    findingsByFile.set(filePath, fileFindings);
+  const analysis = await analyzeProject(rootDir, options);
+  return applyAnalysisPlan(analysis, rootDir, options);
+}
+
+export async function applyAnalysisPlan(
+  analysis: ProjectAnalysisResult,
+  rootDir: string,
+  options: Partial<ScanOptions> = {},
+): Promise<number> {
+  const plan = createTransformationPlan(analysis);
+  const validation = await validateTransformationPlan(rootDir, plan, options);
+  if (validation.status !== "PASSED") {
+    throw new Error(
+      `Transformation validation failed:\n${validation.steps
+        .filter((step) => step.status === "FAILED")
+        .map((step) => step.message)
+        .join("\n")}`,
+    );
   }
-
-  for (const [filePath, fileFindings] of findingsByFile) {
-    let updated = await fs.readFile(filePath, "utf8");
-    const rangeFixes = fileFindings
-      .filter(
-        (finding) =>
-          (finding.rule === "unused-imports" || finding.rule === "console") &&
-          finding.fix?.start !== undefined &&
-          finding.fix.end !== undefined,
-      )
-      .map((finding) => ({
-        start: finding.fix!.start!,
-        end: finding.fix!.end!,
-      }))
-      .sort((left, right) => right.start - left.start);
-
-    for (const fix of rangeFixes) {
-      updated = `${updated.slice(0, fix.start)}${updated.slice(fix.end)}`;
-    }
-
-    for (const finding of fileFindings) {
-      if (finding.rule === "debugger") {
-        updated = updated.replace(/debugger\s*;/g, "");
-      }
-    }
-    byFile.set(filePath, updated);
-  }
-
-  let applied = 0;
-  for (const [filePath, updatedText] of byFile.entries()) {
-    const existing = await fs.readFile(filePath, "utf8");
-    if (existing !== updatedText) {
-      await fs.writeFile(filePath, updatedText);
-      applied += 1;
-    }
-  }
-
-  return applied;
+  return applyTransformationPlan(rootDir, plan, analysis.project.files);
 }
 
 export async function writeCleanedCopy(
@@ -81,6 +64,30 @@ export async function writeCleanedCopy(
   outputDir: string,
   options: Partial<ScanOptions> = {},
 ): Promise<number> {
+  const analysis = await analyzeProject(inputDir, options);
+  return writeCleanedCopyFromAnalysis(analysis, outputDir, options);
+}
+
+export async function writeCleanedCopyFromAnalysis(
+  analysis: ProjectAnalysisResult,
+  outputDir: string,
+  options: Partial<ScanOptions> = {},
+): Promise<number> {
+  const inputDir = analysis.project.root;
+  const plan = createTransformationPlan(analysis);
+  const validation = await validateTransformationPlan(inputDir, plan, options);
+  if (validation.status !== "PASSED") {
+    throw new Error(
+      `Transformation validation failed:\n${validation.steps
+        .filter((step) => step.status === "FAILED")
+        .map((step) => step.message)
+        .join("\n")}`,
+    );
+  }
+
+  if (path.resolve(inputDir) === path.resolve(outputDir)) {
+    throw new Error("Cleaned-copy output must not be the input directory.");
+  }
   const files = await collectProjectFiles(inputDir, options.ignore);
   await fs.mkdir(outputDir, { recursive: true });
 
@@ -92,7 +99,50 @@ export async function writeCleanedCopy(
     await fs.copyFile(sourcePath, destinationPath);
   }
 
-  return applySafeTransforms(outputDir, options);
+  return applyTransformationPlan(outputDir, plan, analysis.project.files);
+}
+
+export async function applyTransformationPlan(
+  rootDir: string,
+  plan: TransformationPlan,
+  files: ProjectFile[],
+): Promise<number> {
+  const editsByFile = new Map<string, TransformationPlan["edits"]>();
+  for (const edit of plan.edits) {
+    if (!findFileForEdit(files, edit)) {
+      throw new Error(`Unknown file in transformation plan: '${edit.path}'.`);
+    }
+    const absolutePath = path.resolve(rootDir, edit.path);
+    const relative = path.relative(path.resolve(rootDir), absolutePath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error(
+        `Transformation path escapes the target root: '${edit.path}'.`,
+      );
+    }
+    const edits = editsByFile.get(absolutePath) ?? [];
+    edits.push(edit);
+    editsByFile.set(absolutePath, edits);
+  }
+
+  const updates = new Map<string, string>();
+  for (const [filePath, edits] of editsByFile) {
+    const current = await fs.readFile(filePath, "utf8");
+    const actualHash = createHash("sha256").update(current).digest("hex");
+    if (edits.some((edit) => edit.expectedContentHash !== actualHash)) {
+      throw new Error(
+        `Source changed after analysis; refusing to edit '${filePath}'.`,
+      );
+    }
+    updates.set(filePath, applyPlanEdits(current, edits));
+  }
+
+  let changedFiles = 0;
+  for (const [filePath, updated] of updates) {
+    if ((await fs.readFile(filePath, "utf8")) === updated) continue;
+    await fs.writeFile(filePath, updated, "utf8");
+    changedFiles += 1;
+  }
+  return changedFiles;
 }
 
 export function toDiffText(findings: Finding[]): string {

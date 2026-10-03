@@ -5,19 +5,25 @@
 [![license](https://img.shields.io/github/license/VeloraTech/Cleaner)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/VeloraTech/Cleaner)](https://github.com/VeloraTech/Cleaner)
 
-Cleaner is a local-first static-analysis CLI for JavaScript and TypeScript projects. It helps developers find unnecessary code, debug artifacts, and suspicious cleanup candidates without blindly editing source files.
+Cleaner is a local-first, project-level static-analysis CLI for JavaScript and TypeScript. It uses one shared TypeScript analysis program to map modules and references, find unnecessary code, and apply only validated safe cleanup edits.
 
 ## What Cleaner does
 
-Cleaner is designed to:
+Available in this milestone:
 
-- scan JavaScript and TypeScript projects
-- detect unused imports, variables, and parameters
+- load project files, Cleaner configuration, ignore rules, and TypeScript configuration
+- build a project graph of modules, imports, exports, symbols, references, dependencies, and resolved calls
+- detect unused imports, local variables, parameters, functions, and exports
 - flag and safely remove standalone console/debugger statements
 - report unreachable-statement and legacy-file candidates
-- respect ignore rules and config options
-- preview changes in diff mode
-- apply only safe transformations in explicit write mode
+- attach static evidence, confidence, and source locations to findings
+- preview structured edits and validate proposed output in a temporary copy before applying it
+- create a cleaned copy by default; modify source only in explicit write mode
+
+Duplicate-code detection, artifact analysis, runtime observation and runtime
+evidence, automated test execution during validation, and advanced
+simplification are not part of this release. These and the broader Cleaner 2.0
+vision remain future work; this release provides the static-analysis foundation.
 
 It prioritizes correctness and transparency over aggressive cleanup.
 
@@ -35,21 +41,26 @@ Developer tooling should help people understand what may be unnecessary, not gue
 ## Installation
 
 ```bash
-npm install @coachlogic/cleaner
-npx cleaner --help
-npx cleaner .
-```
-
-If you want npm to display Cleaner's post-install instructions in the terminal,
-install with `--foreground-scripts` (npm may suppress dependency lifecycle output
-otherwise):
-
-```bash
 npm install --foreground-scripts @coachlogic/cleaner
 ```
 
-Without `--foreground-scripts`, npm may suppress dependency lifecycle output.
-After installation, `npx cleaner --help` always prints the full command help.
+The install prints the available starter commands. npm normally buffers output
+from dependency lifecycle scripts, so a plain install may not display the
+message. To install without foreground lifecycle output, then view help:
+
+```bash
+npm install @coachlogic/cleaner
+npx cleaner --help
+```
+
+If Cleaner is already installed and you want to print the install message again:
+
+```bash
+npm rebuild @coachlogic/cleaner --foreground-scripts
+```
+
+npm's lifecycle banner shows the command `node postinstall.cjs`, followed by
+Cleaner's instructions. It does not print the script source inline.
 
 Preview findings without writing output:
 
@@ -218,22 +229,20 @@ and exit behavior, see [docs/cli.md](docs/cli.md).
     "console": true,
     "debugger": true,
     "dead-code": true,
-    "dead-files": true,
-    "duplicate-code": true,
-    "artifacts": true
+    "dead-files": true
   },
   "ignore": ["node_modules/**", "dist/**", "coverage/**"]
 }
 ```
 
-The scanner currently evaluates unused imports, variables, parameters, console
-calls, debugger statements, unreachable statements after unconditional control
-flow, and legacy-named files. The registry also lists `unused-functions`, `unused-exports`,
-`duplicate-code`, and `artifacts`, but those rules do not currently produce
-findings. Console calls are removed only when they are standalone statements in
-a safe statement list; calls embedded in expressions or unbraced control-flow
-bodies are preserved and reported as warnings. Dead-code findings are
-warning-only and are never automatically removed.
+Cleaner also accepts `duplicate-code` and `artifacts` as planned rule IDs, but
+they are disabled by default and do not produce findings. Console calls are
+removed only when they are standalone statements in a safe statement list;
+calls embedded in expressions or unbraced control-flow bodies are preserved
+and reported as warnings. Dead-code, unused-function, and unused-export
+findings are review-only and are never automatically removed. Unused-export
+results are project-local candidates; Cleaner cannot know every external entry
+point or consumer.
 
 ## Supported languages
 
@@ -243,10 +252,10 @@ warning-only and are never automatically removed.
 
 ## Limitations
 
-This is an early `0.1.x` implementation. It does not attempt to be a universal
-code-quality suite or a full semantic optimizer. Some warning-level rules remain
-heuristic and non-fixable; automatic transformations are limited to findings
-Cleaner can prove safe.
+This is the first project-level `0.2.x` milestone, not a universal code-quality
+suite or semantic optimizer. Some warning-level rules remain heuristic and
+non-fixable; automatic transformations are limited to findings Cleaner can
+prove safe. Cleaner does not run project tests during transformation validation.
 
 ## Repository layout
 

@@ -8,9 +8,7 @@
     "console": true,
     "debugger": true,
     "dead-code": true,
-    "dead-files": true,
-    "duplicate-code": true,
-    "artifacts": true
+    "dead-files": true
   },
   "ignore": [
     "node_modules/**",

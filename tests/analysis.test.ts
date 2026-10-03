@@ -5,11 +5,12 @@ import { mkdtemp, mkdir, writeFile, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { scanText, scanProject } from "../src/core/scanner.js";
+import { analyzeProject, scanText, scanProject } from "../src/core/scanner.js";
 import { loadConfig } from "../src/config/config.js";
 import { RULES } from "../src/core/rules.js";
 import { resolveOutputPlan } from "../src/core/output.js";
 import { applySafeTransforms } from "../src/core/transformer.js";
+import { validateTransformationPlan } from "../src/core/validation.js";
 
 test("detects unused imports and debug statements in code text", () => {
   const source = `
@@ -233,6 +234,139 @@ test("loads config defaults and ignore patterns", async () => {
   assert.deepEqual(config.ignore, ["dist/**", "coverage/**"]);
 });
 
+test("project analysis resolves cross-file imports, re-exports, and path aliases", async () => {
+  const projectDir = await mkdtemp(
+    path.join(tmpdir(), "cleaner-project-graph-"),
+  );
+  await mkdir(path.join(projectDir, "src", "lib"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        target: "ES2022",
+        module: "NodeNext",
+        moduleResolution: "NodeNext",
+        baseUrl: ".",
+        paths: { "@lib/*": ["src/lib/*"] },
+      },
+      include: ["src/**/*.ts"],
+    }),
+  );
+  await writeFile(
+    path.join(projectDir, "src", "lib", "foo.ts"),
+    `export function foo() { return 1; }\nexport function unusedExport() { return 2; }\nfunction privateUnused() { return 3; }\n`,
+  );
+  await writeFile(
+    path.join(projectDir, "src", "index.ts"),
+    `export { foo as sharedFoo } from "@lib/foo";\n`,
+  );
+  await writeFile(
+    path.join(projectDir, "src", "consumer.ts"),
+    `import { sharedFoo } from "./index.js";\nexport const result = sharedFoo();\n`,
+  );
+
+  const result = await analyzeProject(projectDir);
+  const unusedImport = result.findings.find(
+    (finding) =>
+      finding.category === "unused-imports" &&
+      finding.locations.some((location) => location.path === "src/consumer.ts"),
+  );
+  const unusedExport = result.findings.find(
+    (finding) =>
+      finding.category === "unused-exports" &&
+      finding.message.includes("unusedExport"),
+  );
+  const privateFunction = result.findings.find(
+    (finding) =>
+      finding.category === "unused-functions" &&
+      finding.message.includes("privateUnused"),
+  );
+
+  assert.equal(result.project.files.length, 3);
+  assert.equal(result.project.graph.modules.length, 3);
+  assert.ok(
+    result.project.graph.dependencies.some(
+      (edge) =>
+        edge.specifier === "@lib/foo" &&
+        edge.resolution === "resolved-project" &&
+        edge.toModuleId !== undefined,
+    ),
+  );
+  assert.ok(
+    result.project.graph.references.some(
+      (reference) =>
+        reference.fileId ===
+          result.project.files.find(
+            (file) => file.relativePath === "src/consumer.ts",
+          )?.id && reference.kind === "value",
+    ),
+  );
+  assert.equal(unusedImport, undefined);
+  assert.ok(unusedExport);
+  assert.ok(privateFunction);
+});
+
+test("project analysis reports source syntax failures with locations", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-syntax-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, "src", "broken.ts"),
+    "const broken = ;\n",
+  );
+
+  const result = await analyzeProject(projectDir);
+  const syntaxFinding = result.findings.find(
+    (finding) => finding.category === "syntax",
+  );
+
+  assert.equal(syntaxFinding?.severity, "ERROR");
+  assert.equal(syntaxFinding?.locations[0]?.path, "src/broken.ts");
+  assert.equal(syntaxFinding?.evidence[0]?.kind, "STATIC");
+});
+
+test("invalid transformation plans fail validation without changing originals", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "cleaner-validation-"));
+  await mkdir(path.join(projectDir, "src"), { recursive: true });
+  const sourcePath = path.join(projectDir, "src", "value.ts");
+  const source = "const value = 1;\n";
+  await writeFile(sourcePath, source);
+
+  const analysis = await analyzeProject(projectDir, {
+    rules: { "unused-imports": false, "unused-variables": false },
+  });
+  const file = analysis.project.files.find(
+    (projectFile) => projectFile.relativePath === "src/value.ts",
+  );
+  assert.ok(file);
+
+  const start = source.indexOf("1");
+  const result = await validateTransformationPlan(projectDir, {
+    id: "invalid-edit-test",
+    findingIds: [],
+    risk: "LOW",
+    edits: [
+      {
+        fileId: file.id,
+        path: file.relativePath,
+        expectedContentHash: file.contentHash,
+        start,
+        end: start + 1,
+        replacement: ";",
+      },
+    ],
+    preview: "invalid edit",
+  });
+
+  assert.equal(result.status, "FAILED");
+  assert.equal(
+    result.steps.some(
+      (step) => step.name === "syntax" && step.status === "FAILED",
+    ),
+    true,
+  );
+  assert.equal(await readFile(sourcePath, "utf8"), source);
+});
+
 test("rule registry exposes every configured rule", () => {
   const ruleIds = Object.keys(RULES);
   assert.ok(ruleIds.length > 0);
@@ -418,7 +552,10 @@ test("diff mode reports proposed changes", async () => {
 
   assert.match(output, /--- .*demo\.ts/i);
   assert.match(output, /console|debugger|unused-imports/i);
-  assert.match(output, /Diff preview only\. No files were changed or written\./);
+  assert.match(
+    output,
+    /Diff preview only\. No files were changed or written\./,
+  );
 });
 
 test("default mode writes a cleaned copy and preserves the source", async () => {
